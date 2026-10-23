@@ -45,9 +45,9 @@ def render_static_report(snapshot: dict[str, Any]) -> str:
     data = json.dumps(snapshot).replace("</", "<\\/")
     replacements = {
         '<link rel="stylesheet" href="app.css">': f"<style>\n{css}\n</style>",
-        '<script src="app.js" defer></script>': (
-            f"<script>window.SPM_STATIC = {data};</script>\n<script>\n{js}\n</script>"
-        ),
+        # Inline scripts ignore `defer`, so they move to the end of <body> where the DOM exists.
+        '<script src="app.js" defer></script>': "",
+        "</body>": f"<script>window.SPM_STATIC = {data};</script>\n<script>\n{js}\n</script>\n</body>",
         'href="icon.png"': f'href="data:image/png;base64,{icon}"',
         'src="icon.png"': f'src="data:image/png;base64,{icon}"',
     }

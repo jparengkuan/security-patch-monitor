@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import platform
 from importlib import resources
+from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 from patch_monitor import APP_NAME
 
@@ -15,6 +17,7 @@ DEFAULT_SIZE = (1280, 820)
 MIN_SIZE = (760, 560)
 SCREEN_FRACTION = (0.9, 0.88)
 MAX_WIDTH = 1600
+LOCK_FILE_TYPES = ("Composer lock file (*.lock)", "All files (*.*)")
 
 
 class DesktopUnavailableError(RuntimeError):
@@ -31,12 +34,40 @@ def load_webview() -> ModuleType:
     return webview
 
 
-def run_window(url: str) -> None:
+class WebviewFilePicker:
+    """Native "open file" dialog of the app window. Unavailable until a window is attached."""
+
+    def __init__(self) -> None:
+        self._window: Any = None
+        self._webview: ModuleType | None = None
+
+    def attach(self, webview: ModuleType, window: Any) -> None:
+        self._webview, self._window = webview, window
+
+    @property
+    def available(self) -> bool:
+        return self._window is not None
+
+    def pick_composer_lock(self) -> str | None:
+        if self._window is None or self._webview is None:
+            return None
+        selection = self._window.create_file_dialog(
+            self._webview.FileDialog.OPEN,
+            directory=str(Path.home()),
+            allow_multiple=False,
+            file_types=LOCK_FILE_TYPES,
+        )
+        return str(selection[0]) if selection else None
+
+
+def run_window(url: str, picker: WebviewFilePicker | None = None) -> None:
     """Open the app window and block until it is closed."""
     webview = load_webview()
     _set_macos_identity()
     width, height = _window_size(webview)
-    webview.create_window(APP_NAME, url, width=width, height=height, min_size=MIN_SIZE)
+    window = webview.create_window(APP_NAME, url, width=width, height=height, min_size=MIN_SIZE)
+    if picker is not None:
+        picker.attach(webview, window)
     webview.start()
 
 

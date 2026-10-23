@@ -9,6 +9,7 @@ from patch_monitor.models import Kind, Product, Severity
 from patch_monitor.sources import SourceContext
 from patch_monitor.sources.drupal import (
     CONTRIB_FEED,
+    CORE_FEED,
     PSA_FEED,
     DrupalAdvisorySource,
     DrupalPsaSource,
@@ -68,6 +69,19 @@ def test_drupal_contrib_advisory_parses_fields(ctx: SourceContext, http: FakeHtt
     assert item.severity is Severity.CRITICAL
     assert "monster_menus" in item.detail
     assert "<9.5.6 || >=10.0.0 <10.0.2" in item.detail
+
+
+def test_drupal_core_advisory_has_package_and_range(ctx: SourceContext, http: FakeHttp) -> None:
+    http.responses[CORE_FEED] = rss(
+        rss_item(
+            "Drupal core - Critical - Remote code execution - SA-CORE-2026-014",
+            "Wed, 14 Oct 2026 16:10:00 +0000",
+            description="<div>Affected versions:&nbsp;&gt;= 11.0.0 &lt; 11.3.19 || &gt;= 11.4.0 &lt; 11.4.10</div>"
+            "<div>CVE IDs:&nbsp;CVE-2026-2</div>",
+        )
+    )
+    [item] = DrupalAdvisorySource.core().collect(ctx)
+    assert (item.package, item.affected) == ("drupal/core", ">= 11.0.0 < 11.3.19 || >= 11.4.0 < 11.4.10")
 
 
 def test_drupal_release_window_is_next_wednesday(ctx: SourceContext) -> None:

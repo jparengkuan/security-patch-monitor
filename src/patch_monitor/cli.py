@@ -14,11 +14,14 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from patch_monitor import APP_NAME, __version__
-from patch_monitor.desktop import DesktopUnavailableError, run_window
+from patch_monitor.desktop import DesktopUnavailableError, WebviewFilePicker, run_window
 from patch_monitor.http import UrllibHttpClient
+from patch_monitor.impact import ImpactAnalyzer
 from patch_monitor.logging_setup import configure_logging
-from patch_monitor.monitor import Monitor
+from patch_monitor.monitor import Monitor, report_with_impacts
 from patch_monitor.notifications import platform_notifier
+from patch_monitor.project_reader import ProjectReader
+from patch_monitor.projects import JsonProjectStore, ProjectService
 from patch_monitor.report import ReportBuilder
 from patch_monitor.seen import JsonSeenStore
 from patch_monitor.settings import JsonSettingsStore
@@ -56,12 +59,19 @@ def build_report_builder() -> ReportBuilder:
     return ReportBuilder(default_sources(), http)
 
 
-def build_monitor(paths: AppPaths) -> Monitor:
+def build_projects(paths: AppPaths) -> tuple[ProjectService, ImpactAnalyzer]:
+    reader = ProjectReader()
+    projects = ProjectService(JsonProjectStore(paths.projects_file), reader)
+    return projects, ImpactAnalyzer(projects.projects, reader)
+
+
+def build_monitor(paths: AppPaths, impacts: ImpactAnalyzer) -> Monitor:
     return Monitor(
         provider=build_report_builder(),
         settings_store=JsonSettingsStore(paths.settings_file),
         seen_store=JsonSeenStore(paths.seen_file),
         notifier=platform_notifier(),
+        impacts=impacts,
     )
 
 
@@ -73,28 +83,33 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if one_shot:
         # One-shot reports never touch the notification state of the running app.
+        _, impacts = build_projects(paths)
+        impacts.refresh()
         report = build_report_builder().build(JsonSettingsStore(paths.settings_file).load())
+        data = report_with_impacts(report, impacts)
         if args.json:
-            print(json.dumps(report.to_dict(), indent=2))
+            print(json.dumps(data, indent=2))
         else:
-            snapshot = {"report": report.to_dict(), "status": None}
+            snapshot = {"report": data, "status": None}
             args.html.write_text(render_static_report(snapshot), encoding="utf-8")
             print(f"Report written to {args.html}")
         return 1 if report.errors and not report.items else 0
 
     port = args.port or (BROWSER_PORT if args.browser else 0)
-    return run_app(build_monitor(paths), port=port, browser=args.browser)
+    projects, impacts = build_projects(paths)
+    return run_app(build_monitor(paths, impacts), projects, port=port, browser=args.browser)
 
 
-def run_app(monitor: Monitor, *, port: int, browser: bool) -> int:
-    server = LocalServer(monitor, port=port)
+def run_app(monitor: Monitor, projects: ProjectService, *, port: int, browser: bool) -> int:
+    picker = WebviewFilePicker()
+    server = LocalServer(monitor, projects, picker=picker, port=port)
     server.start()
     monitor.start()
     log.info("%s %s started", APP_NAME, __version__)
     try:
         if not browser:
             try:
-                run_window(server.url)
+                run_window(server.url, picker)
                 return 0
             except DesktopUnavailableError as exc:
                 log.warning("%s – falling back to the browser", exc)

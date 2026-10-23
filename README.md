@@ -12,14 +12,31 @@
 
 ![Security Patch Monitor – month view with the upcoming items in the side panel](docs/screenshot.png)
 
+## Key features
+
+- **Calendar of security patches** – pre-announced releases, expected release windows, end-of-support dates
+  and published advisories in a day, week or month view, plus a list view.
+- **Automatic checks and notifications** – checks every 30 minutes while the app is open (configurable) and
+  sends a system notification when new items appear.
+- **"Does this affect my projects?"** – add your Drupal projects and every Drupal core and contrib advisory
+  is checked against their `composer.lock`, with the version to update to.
+- **Enabled or just installed?** – the exported `core.extension.yml` shows whether a vulnerable module is
+  actually enabled, only enabled in a config split, or installed but switched off.
+- **Reads the latest `develop`** – projects can be checked against the newest commit on `origin/develop` (or
+  any branch) without touching your local checkout, or against your local files.
+- **Filters** – by product, severity, type and "affects my projects".
+- **Native desktop app** – macOS app with its own icon; also runs in a browser or exports JSON/HTML reports.
+
 ---
 
 ## Contents
 
+- [Key features](#key-features)
 - [Why](#why)
-- [Features](#features)
+- [Feature details](#feature-details)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Projects: is my site affected?](#projects-is-my-site-affected)
 - [What counts as "upcoming"](#what-counts-as-upcoming)
 - [Data sources](#data-sources)
 - [Configuration and data](#configuration-and-data)
@@ -36,9 +53,11 @@ with different lead times: Drupal publishes PSAs a few days ahead, Node.js pre-a
 advance, PHP posts on php.net and Next.js only publishes advisories once a fix is out. This app collects all of
 it in one calendar, so you can plan update windows instead of reacting to them.
 
-The app **only informs**: it does not scan your projects or servers.
+The app informs you about upcoming patches for everything, and can additionally tell you which of
+**your Drupal projects** are affected by a core or contrib advisory, based on their `composer.lock` and
+`core.extension.yml`. It never changes your projects or contacts your servers.
 
-## Features
+## Feature details
 
 | | |
 |---|---|
@@ -47,6 +66,7 @@ The app **only informs**: it does not scan your projects or servers.
 | **Filters** | Product, severity and type. Clicking a filter shows *only* that value; click more values to combine them, click an active value to remove it, and **All** resets the group. |
 | **Automatic checks** | While the app is open it checks every 30 minutes by default. The interval is configurable in **⚙︎ Settings**. **Check now** runs a check immediately. |
 | **Notifications** | A system notification when new items appear (on by default, can be turned off in Settings). New items are marked with **●** until you click **Mark as seen**. |
+| **Projects** | Add your Drupal projects (name + `composer.lock`) in Settings. Every Drupal contrib advisory is checked against the installed versions and shows **⚠ Affects …** with the version to update to. |
 | **Resilient** | A failing source is shown as a warning; all other sources keep working. |
 | **Exports** | `--json` for scripts and `--html` for a single self-contained, shareable calendar file. |
 | **Keyboard** | <kbd>←</kbd> <kbd>→</kbd> navigate, <kbd>t</kbd> today, <kbd>d</kbd> / <kbd>w</kbd> / <kbd>m</kbd> switch view. |
@@ -99,6 +119,57 @@ security-patch-monitor --help
 
 The exit code of `--json` / `--html` is `1` only when every source failed, so it can be used in cron jobs.
 
+## Projects: is my site affected?
+
+![Drupal contrib advisories showing the affected projects, the version to update to and whether the module is enabled](docs/screenshot-projects.png)
+
+1. Open **⚙︎ Settings** → **Projects** → **Add project**.
+2. Enter a name and choose the project's `composer.lock` with **Browse…** (or paste the path; a project
+   directory works too).
+3. Choose where to read the project from:
+   - **Latest commit on branch** `origin/develop` (default) – what is on develop right now, even if your
+     local checkout is behind or has uncommitted changes;
+   - **Local files** – the working copy as it is on disk.
+4. Done. Projects are saved immediately. **Edit** changes the name, the `composer.lock` or the source (the
+   new values are validated first; on an error nothing changes), and **Remove** deletes a project (click twice
+   to confirm).
+
+For every **Drupal core and contrib advisory** the app checks each project in two steps:
+
+1. **Installed version** – the affected range from the advisory (for example `>=6.1.0 <6.1.3`) is compared with
+   the version in `composer.lock`, including indirect and dev dependencies. A match shows
+   *update to 6.1.3 or later*.
+2. **Enabled?** – the exported configuration (`core.extension.yml`, usually in `config/sync/`) tells whether the
+   module, or one of its submodules, is enabled:
+
+| Status | Meaning |
+|---|---|
+| **Enabled** | Enabled in the main configuration. The name in brackets is the (sub)module that is enabled. |
+| **Enabled in config split: dev** | Only enabled in a config split (`config/split/<name>/`), i.e. in some environments. |
+| **Installed, not enabled** | The code is present but the module is off. Shown as "Installed in … but not enabled", not counted as affected and never the subject of an urgent notification. Update it anyway. |
+| **Enabled state unknown** | No `core.extension.yml` was found; treated as affected to be safe. |
+| **Drupal core (always enabled)** | A core advisory matched the locked `drupal/core` version. |
+
+Every line also shows where the data came from, e.g. `origin/develop @ 35660b8 (2026-10-23 13:04)`.
+Advisories for modules your projects use in a safe version show *✓ Not affected in your projects*. The
+**⚠ Affects my projects** filter, the ⚠ calendar marker and notifications only count projects where the module
+is (or may be) enabled.
+
+### How the git branch is read
+
+- Before every check the app runs `git fetch origin <branch>` in the project's repository (at most once every
+  5 minutes per branch). This only updates the remote-tracking ref `origin/<branch>`: your working copy, your
+  checked-out branch and local changes are never touched.
+- `composer.lock` and `core.extension.yml` are then read with `git show origin/<branch>:<path>`, straight from
+  the git object database.
+- Git uses your normal credentials (SSH agent / keychain) but is never allowed to prompt. If fetching fails –
+  offline, VPN not connected, key not loaded – the last fetched commit is used and the project shows
+  *Could not fetch develop (…); using the last fetched commit*.
+- Contrib code is usually not committed, so submodules are discovered from the local `web/modules/contrib/`.
+
+With **Local files**, changes are picked up within a minute after `composer update` or `drush config:export`.
+Other products (PHP, Node.js, Next.js) are informational only.
+
 ## What counts as "upcoming"
 
 Nobody can predict a security release, so every item says what it is based on:
@@ -145,6 +216,7 @@ Override with `--data-dir` or the `SPM_DATA_DIR` environment variable.
 | File | Contents |
 |---|---|
 | `settings.json` | `interval_minutes` (1–1440, default 30), `notifications` (default `true`), `history_days` (default 60), `eol_warning_days` (default 365). Invalid values fall back to defaults. |
+| `projects.json` | Your projects: name, path to `composer.lock` and the branch to read (or local files). |
 | `seen.json` | Items you were already notified about, kept for a year. Delete it to start fresh; the first check after that records everything silently. |
 | `app.log` | Rotating log (3 × 1 MB). |
 
@@ -168,13 +240,19 @@ src/patch_monitor/
 │   └── endoflife.py     endoflife.date (end of support; shared by php.py)
 ├── report.py            ReportBuilder: runs sources in parallel, isolates failures, de-duplicates
 ├── monitor.py           Scheduling, new-item detection, notifications, settings changes
+├── projects.py          Projects (name + composer.lock + branch): validation, persistence, lock parsing
+├── project_files.py     ProjectFiles: read a project from the working tree or a git commit; git fetch
+├── project_reader.py    Per-project state (locked versions, enabled extensions, source), cached per commit
+├── drupal_config.py     core.extension.yml discovery and parsing, config splits, submodules
+├── impact.py            Which projects an advisory affects (locked version, enabled state)
+├── version.py           Version parsing and constraint matching (Drupal / npm range syntax)
 ├── notifications.py     Notifier protocol + macOS / Linux / Windows implementations
 ├── settings.py          Validated Settings + JSON store
 ├── seen.py              Store of already-notified items
 ├── storage.py           Data directory resolution, atomic writes
 ├── http.py              HttpClient protocol, urllib client (timeouts, retries, size limit), per-check cache
 ├── feeds.py / text.py   Safe RSS/Atom parsing and pure text/date helpers
-├── desktop.py           pywebview window, macOS Dock name and icon
+├── desktop.py           pywebview window, native file dialog, macOS Dock name and icon
 └── web/
     ├── server.py        Loopback HTTP server + JSON API
     ├── assets.py        Static files and the self-contained HTML export
@@ -195,8 +273,8 @@ Design principles (SOLID):
   separate modules.
 - **Open/closed** – a new data source is a new class added to `default_sources()`; nothing else changes.
 - **Liskov / interface segregation** – collaborators are small `Protocol`s (`Source`, `HttpClient`, `Notifier`,
-  `SettingsStore`, `SeenStore`, `ReportProvider`, `MonitorApi`). The web layer only sees the five monitor
-  methods it needs.
+  `SettingsStore`, `SeenStore`, `ProjectStore`, `ProjectFiles`, `ImpactAssessor`, `ReportProvider`, `MonitorApi`, `ProjectsApi`,
+  `FilePicker`). The web layer only sees the methods it needs.
 - **Dependency inversion** – high-level code depends on those protocols; `cli.py` injects the concrete
   implementations, and the tests inject fakes (no network, disk or real time required).
 
@@ -251,4 +329,9 @@ A new product additionally needs a `Product` member in `models.py` and an entry 
 | No notifications on macOS | Allow notifications for **Script Editor** in System Settings → Notifications (macOS shows notifications sent via `osascript` under that name). |
 | GitHub rate limit errors | Set `GITHUB_TOKEN`, or use a longer check interval. |
 | The app opens in the browser | pywebview is not installed: `pip install -e ".[desktop]"`. |
+| A project shows "composer.lock not found" | The project moved or the lock file was deleted. Remove the project and add it again. |
+| An advisory is not matched | Only Drupal contrib advisories are checked, and only for projects whose `composer.lock` contains that module. Development branches such as `dev-1.x` cannot be compared. |
+| "Could not fetch develop" | Check VPN/network and that your SSH key is loaded (`ssh-add -l`). The last fetched commit is used meanwhile. |
+| "Branch origin/develop not found" | The repository has no such branch on `origin`; **Edit** the project and choose another branch or **Local files**. |
+| "Enabled state unknown" | No `core.extension.yml` found within 7 directory levels (outside `vendor`, `web/core`, `modules`, …). Export the configuration with `drush config:export`. |
 | Reset everything | Quit the app and delete the data directory listed above. |

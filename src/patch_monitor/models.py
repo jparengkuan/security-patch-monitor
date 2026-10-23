@@ -70,6 +70,8 @@ class Item:
     url: str = ""
     severity: Severity = Severity.INFO
     detail: str = ""
+    package: str | None = None  # Composer package an advisory applies to, e.g. "drupal/webform"
+    affected: str | None = None  # affected version range, e.g. "<4.2.1 || >=5.0.0 <5.0.3"
 
     @property
     def key(self) -> str:
@@ -86,6 +88,8 @@ class Item:
             "url": self.url,
             "severity": self.severity.value,
             "detail": self.detail,
+            "package": self.package,
+            "affected": self.affected,
             "new": new,
         }
 

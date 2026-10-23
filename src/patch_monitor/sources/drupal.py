@@ -13,6 +13,7 @@ from patch_monitor.text import WEDNESDAY, dates_in_text, next_weekday, severity_
 PSA_FEED = "https://www.drupal.org/security/psa/rss.xml"
 CORE_FEED = "https://www.drupal.org/security/rss.xml"
 CONTRIB_FEED = "https://www.drupal.org/security/contrib/rss.xml"
+CORE_PACKAGE = "drupal/core"
 RELEASE_TIMING_URL = "https://www.drupal.org/drupal-security-team/security-release-numbers-and-release-timing"
 
 _FIELD_LABELS = (
@@ -87,14 +88,16 @@ class DrupalAdvisorySource:
             if entry.published is None or entry.published < ctx.history_start:
                 continue
             text = strip_tags(entry.content)
-            affected = advisory_field(text, "Affected versions") or "see advisory"
+            affected = advisory_field(text, "Affected versions")
             # Titles look like "Project - Moderately critical - Access bypass - SA-CONTRIB-2026-001"
             parts = [part.strip() for part in entry.title.split(" - ")]
             risk = parts[1] if len(parts) > 1 else entry.title
-            prefix = self.scope
+            prefix: str = self.scope
+            package: str | None = CORE_PACKAGE
             if self.scope != "Core":
-                machine_name = advisory_field(text, "Project machine name").split(" ")[0] or "?"
-                prefix = f"{self.scope} · {machine_name}"
+                machine_name = advisory_field(text, "Project machine name").split(" ")[0]
+                prefix = f"{self.scope} · {machine_name or '?'}"
+                package = f"drupal/{machine_name}" if machine_name else None
             items.append(
                 Item(
                     product=Product.DRUPAL,
@@ -103,7 +106,9 @@ class DrupalAdvisorySource:
                     date=entry.published,
                     url=entry.link,
                     severity=severity_from_text(risk),
-                    detail=f"{prefix} · affected versions: {affected}",
+                    detail=f"{prefix} · affected versions: {affected or 'see advisory'}",
+                    package=package,
+                    affected=affected or None,
                 )
             )
         return items

@@ -24,6 +24,10 @@ class AppPaths:
         return self.data_dir / "seen.json"
 
     @property
+    def projects_file(self) -> Path:
+        return self.data_dir / "projects.json"
+
+    @property
     def log_file(self) -> Path:
         return self.data_dir / "app.log"
 

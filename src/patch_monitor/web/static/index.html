@@ -24,6 +24,7 @@
       <button type="button" data-mode="list">List</button>
     </div>
     <div class="chips" id="products" data-filter="products"></div>
+    <button type="button" class="toggle" id="affectsOnly" hidden aria-pressed="false">⚠ Affects my projects</button>
     <div class="spacer"></div>
     <div class="chips" id="sevs" data-filter="sevs"></div>
     <div class="chips" id="kinds" data-filter="kinds"></div>
@@ -79,7 +80,40 @@
         <label for="notif">Notifications<small>System notification for new items</small></label>
         <label class="switch"><input type="checkbox" id="notif"><span></span></label>
       </div>
-      <div class="actions">
+      <section class="projects" aria-labelledby="projectsTitle">
+        <div class="projects-head">
+          <div>
+            <h3 id="projectsTitle">Projects</h3>
+            <small>Drupal core and contrib advisories are checked against each project's composer.lock (and core.extension.yml for modules). Changes are saved immediately.</small>
+          </div>
+          <button type="button" class="btn" id="addProject">Add project</button>
+        </div>
+        <div class="project-form" id="projectForm" hidden>
+          <h4 id="projectFormTitle">Add project</h4>
+          <label for="projectName">Project name</label>
+          <input type="text" id="projectName" maxlength="80" autocomplete="off" placeholder="e.g. Customer portal">
+          <label for="projectPath">composer.lock</label>
+          <div class="path-row">
+            <input type="text" id="projectPath" autocomplete="off" spellcheck="false" placeholder="/path/to/project/composer.lock">
+            <button type="button" class="btn" id="browseLock">Browse…</button>
+          </div>
+          <fieldset class="source-choice">
+            <legend>Read composer.lock and core.extension.yml from</legend>
+            <label><input type="radio" name="projectSource" value="git" checked> Latest commit on branch
+              <span class="branch-input">origin/<input type="text" id="projectBranch" value="develop" autocomplete="off" spellcheck="false" aria-label="Branch"></span></label>
+            <label><input type="radio" name="projectSource" value="local"> Local files (working copy)</label>
+            <small>The branch is fetched in the background; your working copy is never changed.</small>
+          </fieldset>
+          <div class="form-error" id="projectError" role="alert" hidden></div>
+          <div class="actions">
+            <button type="button" class="btn" id="cancelProject">Cancel</button>
+            <button type="button" class="btn primary" id="saveProject">Add project</button>
+          </div>
+        </div>
+        <ul class="project-list" id="projectList"></ul>
+      </section>
+
+      <div class="actions dialog-actions">
         <button class="btn" value="cancel">Cancel</button>
         <button class="btn primary" id="saveSettings" value="save">Save</button>
       </div>

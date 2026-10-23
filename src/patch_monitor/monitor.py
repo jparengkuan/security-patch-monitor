@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from patch_monitor.impact import Impact, ImpactAssessor
 from patch_monitor.models import Report
 from patch_monitor.notifications import Notifier, summarize
 from patch_monitor.report import ReportProvider
@@ -53,9 +54,11 @@ class Monitor:
         seen_store: SeenStore,
         notifier: Notifier,
         *,
+        impacts: ImpactAssessor | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._provider = provider
+        self._impacts = impacts
         self._settings_store = settings_store
         self._seen = seen_store
         self._notifier = notifier
@@ -95,8 +98,11 @@ class Monitor:
 
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
-            report = self._report.to_dict(self._new_keys) if self._report else None
-            return {"report": report, "status": self.status().to_dict()}
+            report, new_keys, status = self._report, self._new_keys, self.status()
+        if report is None:
+            return {"report": None, "status": status.to_dict()}
+        # Reading lock files happens outside the state lock.
+        return {"report": report_with_impacts(report, self._impacts, new_keys), "status": status.to_dict()}
 
     # -- commands --------------------------------------------------------------
 
@@ -107,11 +113,12 @@ class Monitor:
                 self._checking = True
                 settings = self._settings
             try:
+                self._refresh_projects()
                 report = self._provider.build(settings)
                 newly_seen = self._register(report)
                 if newly_seen and settings.notifications:
                     new_items = [item for item in report.items if item.key in newly_seen]
-                    self._notifier.notify(*summarize(new_items))
+                    self._notifier.notify(*summarize(new_items, self._assess(report)))
                 return report
             finally:
                 with self._state_lock:
@@ -183,6 +190,40 @@ class Monitor:
         if first_run:
             log.info("First run: %d items recorded without notifications", len(report.items))
         return newly_seen
+
+    def _assess(self, report: Report) -> dict[str, list[Impact]]:
+        return assess_safely(self._impacts, report)
+
+    def _refresh_projects(self) -> None:
+        if self._impacts is None:
+            return
+        try:
+            self._impacts.refresh()
+        except Exception:
+            log.exception("Refreshing project sources failed")
+
+
+def assess_safely(assessor: ImpactAssessor | None, report: Report) -> dict[str, list[Impact]]:
+    """Impact per item key; analysis problems are logged and never break the report."""
+    if assessor is None:
+        return {}
+    try:
+        return assessor.assess(report.items)
+    except Exception:
+        log.exception("Impact analysis failed")
+        return {}
+
+
+def report_with_impacts(
+    report: Report, assessor: ImpactAssessor | None, new_keys: frozenset[str] = frozenset()
+) -> dict[str, Any]:
+    """The report as sent to the UI, with the affected projects attached to each item."""
+    impacts = assess_safely(assessor, report)
+    data = report.to_dict(new_keys)
+    for item in data["items"]:
+        item["impacts"] = [impact.to_dict() for impact in impacts.get(item["key"], [])]
+    data["projects_configured"] = assessor.has_projects() if assessor else False
+    return data
 
 
 def _iso(timestamp: float | None) -> str | None:

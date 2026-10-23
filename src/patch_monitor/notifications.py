@@ -7,11 +7,12 @@ import logging
 import platform
 import shutil
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
 from patch_monitor import APP_NAME
+from patch_monitor.impact import Impact
 from patch_monitor.models import Item, Kind
 
 log = logging.getLogger(__name__)
@@ -92,10 +93,18 @@ def platform_notifier(icon: Path | None = None) -> Notifier:
     return NullNotifier()
 
 
-def summarize(new_items: Sequence[Item]) -> tuple[str, str]:
-    """Title and body for one notification about the given new items (most urgent first)."""
+def summarize(new_items: Sequence[Item], impacts: Mapping[str, Sequence[Impact]] | None = None) -> tuple[str, str]:
+    """Title and body for one notification about the given new items (most urgent first).
+
+    Items that affect one of the user's projects take precedence over everything else.
+    """
     if not new_items:
         raise ValueError("Nothing to summarize")
+    # Only modules that are (or may be) enabled make an advisory urgent for a project.
+    active = {key: [i for i in found if i.active] for key, found in (impacts or {}).items()}
+    affecting = [item for item in new_items if active.get(item.key)]
+    if affecting:
+        return _summarize_affecting(affecting, active, len(new_items))
     ordered = sorted(new_items, key=lambda i: (i.kind is not Kind.UPCOMING, i.severity.rank))
     if len(ordered) == 1:
         item = ordered[0]
@@ -104,3 +113,21 @@ def summarize(new_items: Sequence[Item]) -> tuple[str, str]:
     title = f"{len(ordered)} new security items" + (f" · {announced} announced" if announced else "")
     body = "; ".join(f"{i.product.label}: {i.title}" for i in ordered[:MAX_LISTED])
     return title, body
+
+
+def _summarize_affecting(items: Sequence[Item], impacts: Mapping[str, Sequence[Impact]], total: int) -> tuple[str, str]:
+    ordered = sorted(items, key=lambda i: i.severity.rank)
+    projects = sorted({impact.project for item in ordered for impact in impacts[item.key]})
+    target = projects[0] if len(projects) == 1 else f"{len(projects)} projects"
+    if len(ordered) == 1:
+        title = f"⚠ New advisory affects {target}"
+    else:
+        title = f"⚠ {len(ordered)} new advisories affect {target}"
+    lines = []
+    for item in ordered[:MAX_LISTED]:
+        where = ", ".join(sorted({impact.project for impact in impacts[item.key]}))
+        lines.append(f"{item.title} → {where}")
+    others = total - len(ordered)
+    if others:
+        lines.append(f"+{others} other new item{'s' if others > 1 else ''}")
+    return title, "; ".join(lines)

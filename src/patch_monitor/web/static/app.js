@@ -39,6 +39,12 @@
     generated: null,
     // An empty set means "show everything" for that filter group.
     filters: { products: new Set(), sevs: new Set(), kinds: new Set() },
+    affectsOnly: false,
+    projectsConfigured: false,
+    projects: [],
+    canBrowse: false,
+    pendingRemoval: null,
+    editingProject: null, // id of the project in the form, null when adding
     view: "month",
     cursor: new Date(),
     selected: null,
@@ -72,12 +78,18 @@
   const byDateAsc = (a, b) => (a.date || "").localeCompare(b.date || "");
   const byDateDesc = (a, b) => (b.date || "").localeCompare(a.date || "");
 
+  // An impact is "active" unless the module is installed but not enabled in that project.
+  const activeImpacts = (item) => (item.impacts || []).filter((i) => i.enabled.state !== "not_enabled");
+  const affectsProjects = (item) => activeImpacts(item).length > 0;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
   // ---------------------------------------------------------------- selectors
   function visibleItems() {
     const { products, sevs, kinds } = state.filters;
     const allows = (set, value) => set.size === 0 || set.has(value);
     return state.items.filter((i) =>
-      allows(products, i.product) && allows(sevs, i.severity) && allows(kinds, i.kind) && (!state.onlyNew || i.new));
+      allows(products, i.product) && allows(sevs, i.severity) && allows(kinds, i.kind)
+      && (!state.onlyNew || i.new) && (!state.affectsOnly || affectsProjects(i)));
   }
 
   function itemsByDate(items) {
@@ -102,12 +114,51 @@
         ${item.new ? '<span class="newtag">NEW</span>' : ""}</div>
       <a href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener noreferrer">${esc(item.title)}</a>
       <div class="detail">${when}${esc(item.detail)}</div>
+      ${impactHtml(item)}
     </div>`;
+  }
+
+  function enabledHtml(enabled) {
+    const names = enabled.names.length ? ` (${enabled.names.map(esc).join(", ")})` : "";
+    const where = enabled.source ? ` title="${esc(enabled.source)}"` : "";
+    switch (enabled.state) {
+      case "enabled":
+        return `<span class="state enabled"${where}>Enabled${names}</span>`;
+      case "split_only":
+        return `<span class="state split_only"${where}>Enabled in config split: ${enabled.splits.map(esc).join(", ")}${names}</span>`;
+      case "always":
+        return '<span class="state enabled">Drupal core (always enabled)</span>';
+      case "not_enabled":
+        return `<span class="state not_enabled"${where}>Installed, not enabled</span>`;
+      default:
+        return '<span class="state unknown">Enabled state unknown (no core.extension.yml found)</span>';
+    }
+  }
+
+  function impactHtml(item) {
+    const impacts = item.impacts || [];
+    if (impacts.length) {
+      const rows = impacts.map((i) => {
+        const fix = i.fixed_in ? ` → update to <b>${esc(i.fixed_in)}</b> or later` : " → see advisory for the fixed version";
+        return `<li><strong>${esc(i.project)}</strong>: <code>${esc(i.package)}</code> ${esc(i.installed)}${fix}
+          <div>${enabledHtml(i.enabled)}<span class="src">${esc(i.source)}</span></div></li>`;
+      }).join("");
+      const active = activeImpacts(item).length;
+      const heading = active
+        ? `⚠ Affects ${plural(active, "project")}`
+        : `Installed in ${plural(impacts.length, "project")}, but not enabled`;
+      return `<div class="impact${active ? "" : " dormant"}"><b>${heading}</b><ul>${rows}</ul></div>`;
+    }
+    if (state.projectsConfigured && item.package) {
+      return '<div class="impact clear"><b>✓</b> Not affected in your projects</div>';
+    }
+    return "";
   }
 
   function chipHtml(item) {
     const tooltip = `${PRODUCTS[item.product]} · ${KINDS[item.kind]}\n${item.title}`;
-    return `<div class="ev ${esc(item.kind)} sev-${esc(item.severity)}${item.new ? " isnew" : ""}"
+    const flags = `${item.new ? " isnew" : ""}${affectsProjects(item) ? " affects" : ""}`;
+    return `<div class="ev ${esc(item.kind)} sev-${esc(item.severity)}${flags}"
       data-key="${esc(item.key)}" title="${esc(tooltip)}">${esc(PRODUCTS[item.product])} · ${esc(item.title)}</div>`;
   }
 
@@ -125,6 +176,10 @@
         + `<button type="button" data-all="1" class="${active.size ? "" : "on"}">All</button>${buttons.join("")}`;
     }
     for (const b of $("views").querySelectorAll("button")) b.classList.toggle("on", b.dataset.view === state.view);
+    const affected = state.items.filter(affectsProjects).length;
+    $("affectsOnly").hidden = !state.projectsConfigured;
+    $("affectsOnly").setAttribute("aria-pressed", String(state.affectsOnly));
+    $("affectsOnly").textContent = `⚠ Affects my projects ${affected}`;
   }
 
   function renderMonth(byDate) {
@@ -244,6 +299,8 @@
   }
 
   // ---------------------------------------------------------------- API
+  class ApiError extends Error {}
+
   async function api(path, body) {
     const init = { headers: { "X-SPM-Token": TOKEN } };
     if (body !== undefined) {
@@ -252,8 +309,9 @@
       init.body = JSON.stringify(body);
     }
     const response = await fetch(path, init);
-    if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
-    return response.json();
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new ApiError(data.error || `${path}: HTTP ${response.status}`);
+    return data;
   }
 
   function applySnapshot(snapshot) {
@@ -262,6 +320,8 @@
       state.items = snapshot.report.items;
       state.errors = snapshot.report.errors;
       state.generated = snapshot.report.generated;
+      state.projectsConfigured = Boolean(snapshot.report.projects_configured);
+      if (!state.projectsConfigured) state.affectsOnly = false;
     }
     render();
   }
@@ -276,6 +336,146 @@
       $("status").classList.add("down");
       $("statusText").textContent = "Lost connection to the app";
       console.error(err);
+    }
+  }
+
+  // ---------------------------------------------------------------- projects
+  function renderProjects() {
+    $("browseLock").hidden = !state.canBrowse;
+    if (!state.projects.length) {
+      $("projectList").innerHTML = '<li class="empty">No projects yet. Add one to see which advisories affect it.</li>';
+      return;
+    }
+    $("projectList").innerHTML = state.projects.map(projectHtml).join("");
+  }
+
+  function projectHtml(p) {
+    const s = p.summary;
+    const meta = s ? `Drupal core ${esc(s.drupal_core || "not found")} · ${plural(s.drupal_projects, "contrib project")}` : "";
+    const config = p.config
+      ? `Config: ${esc(p.config.source)} · ${p.config.enabled} enabled`
+        + (p.config.splits.length ? ` · splits: ${p.config.splits.map(esc).join(", ")}` : "")
+      : s ? "Config: no core.extension.yml found" : "";
+    const source = p.source || (p.branch ? `origin/${p.branch}` : "Local files");
+    const confirming = state.pendingRemoval === p.id;
+    return `<li class="${state.editingProject === p.id ? "editing" : ""}">
+      <div class="info"><strong>${esc(p.name)}</strong>
+        <div class="path">${esc(p.lock_path)}</div>
+        <div class="meta">Source: ${esc(source)}</div>
+        ${meta ? `<div class="meta">${meta}</div>` : ""}
+        ${config ? `<div class="meta">${config}</div>` : ""}
+        ${p.warning ? `<div class="notice">⚠ ${esc(p.warning)}</div>` : ""}
+        ${p.error ? `<div class="warn">⚠ ${esc(p.error)}</div>` : ""}</div>
+      <div class="row-actions">
+        <button type="button" class="btn" data-edit="${esc(p.id)}">Edit</button>
+        <button type="button" class="btn danger${confirming ? " confirm" : ""}" data-remove="${esc(p.id)}">
+          ${confirming ? "Confirm remove" : "Remove"}</button>
+      </div>
+    </li>`;
+  }
+
+  function applyProjects(data) {
+    state.projects = data.projects;
+    state.canBrowse = data.can_browse;
+    state.pendingRemoval = null;
+    renderProjects();
+  }
+
+  async function loadProjects() {
+    try {
+      applyProjects(await api("/api/projects"));
+    } catch (err) {
+      $("projectList").innerHTML = `<li class="warn">Cannot load projects: ${esc(err.message)}</li>`;
+    }
+  }
+
+  async function refreshReport() {
+    applySnapshot(await api("/api/report"));
+  }
+
+  const sourceRadio = (value) => document.querySelector(`input[name="projectSource"][value="${value}"]`);
+
+  // One form serves both "add" (project = null) and "edit" (project = the project being edited).
+  function openProjectForm(project = null) {
+    state.editingProject = project ? project.id : null;
+    $("projectFormTitle").textContent = project ? `Edit “${project.name}”` : "Add project";
+    $("saveProject").textContent = project ? "Save changes" : "Add project";
+    $("projectName").value = project ? project.name : "";
+    $("projectPath").value = project ? project.lock_path : "";
+    $("projectBranch").value = project?.branch || "develop";
+    sourceRadio(project && !project.branch ? "local" : "git").checked = true;
+    $("projectError").hidden = true;
+    $("projectForm").hidden = false;
+    $("addProject").hidden = true;
+    renderProjects();
+    $("projectForm").scrollIntoView({ block: "nearest" });
+    $("projectName").focus();
+  }
+
+  function closeProjectForm() {
+    state.editingProject = null;
+    $("projectForm").hidden = true;
+    $("addProject").hidden = false;
+    $("projectError").hidden = true;
+    renderProjects();
+  }
+
+  function showProjectError(message) {
+    $("projectError").textContent = message;
+    $("projectError").hidden = false;
+  }
+
+  async function saveProject() {
+    const name = $("projectName").value.trim();
+    const path = $("projectPath").value.trim();
+    const useGit = sourceRadio("git").checked;
+    const branch = useGit ? $("projectBranch").value.trim() : "";
+    if (!name) return showProjectError("Enter a project name.");
+    if (!path) return showProjectError("Choose a composer.lock file.");
+    if (useGit && !branch) return showProjectError("Enter a branch, or choose “Local files”.");
+
+    const editing = state.editingProject;
+    const button = $("saveProject");
+    const idleLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = useGit ? "Fetching…" : "Saving…";
+    try {
+      const data = editing
+        ? await api("/api/projects/update", { id: editing, name, path, branch })
+        : await api("/api/projects", { name, path, branch });
+      applyProjects(data);
+      closeProjectForm();
+      await refreshReport();
+    } catch (err) {
+      showProjectError(err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = idleLabel;
+    }
+  }
+
+  async function browseLock() {
+    try {
+      const { path } = await api("/api/browse", {});
+      if (path) $("projectPath").value = path;
+    } catch (err) {
+      showProjectError(err.message);
+    }
+  }
+
+  async function removeProject(id) {
+    if (state.pendingRemoval !== id) {
+      state.pendingRemoval = id; // first click asks for confirmation
+      return renderProjects();
+    }
+    try {
+      applyProjects(await api("/api/projects/remove", { id }));
+      if (state.editingProject === id) closeProjectForm();
+      await refreshReport();
+    } catch (err) {
+      state.pendingRemoval = null;
+      renderProjects();
+      showProjectError(err.message);
     }
   }
 
@@ -391,7 +591,35 @@
       const s = state.status?.settings || { interval_minutes: 30, notifications: true };
       $("interval").value = s.interval_minutes;
       $("notif").checked = s.notifications;
+      closeProjectForm();
       $("settings").showModal();
+      loadProjects();
+    });
+    $("addProject").addEventListener("click", () => openProjectForm());
+    $("cancelProject").addEventListener("click", closeProjectForm);
+    $("saveProject").addEventListener("click", saveProject);
+    $("browseLock").addEventListener("click", browseLock);
+    $("projectList").addEventListener("click", (e) => {
+      const remove = e.target.closest("[data-remove]");
+      if (remove) return removeProject(remove.dataset.remove);
+      const editButton = e.target.closest("[data-edit]");
+      if (editButton) openProjectForm(state.projects.find((p) => p.id === editButton.dataset.edit));
+    });
+    $("projectBranch").addEventListener("focus", () => {
+      document.querySelector('input[name="projectSource"][value="git"]').checked = true;
+    });
+    for (const id of ["projectName", "projectPath", "projectBranch"]) {
+      // Enter would otherwise submit (and close) the settings dialog.
+      $(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          saveProject();
+        }
+      });
+    }
+    $("affectsOnly").addEventListener("click", () => {
+      state.affectsOnly = !state.affectsOnly;
+      render();
     });
     $("saveSettings").addEventListener("click", async (e) => {
       e.preventDefault();
