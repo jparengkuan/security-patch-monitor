@@ -121,7 +121,7 @@ The exit code of `--json` / `--html` is `1` only when every source failed, so it
 
 ## Projects: is my site affected?
 
-![Drupal contrib advisories showing the affected projects, the version to update to and whether the module is enabled](docs/screenshot-projects.png)
+![Drupal contrib advisories showing the affected projects, the version to update to and whether the module is enabled](docs/screenshot-project-impact.png)
 
 1. Open **⚙︎ Settings** → **Projects** → **Add project**.
 2. Enter a name and choose the project's `composer.lock` with **Browse…** (or paste the path; a project
