@@ -44,6 +44,7 @@
     projects: [],
     canBrowse: false,
     pendingRemoval: null,
+    refetching: null, // id of the project whose branch is being fetched
     editingProject: null, // id of the project in the form, null when adding
     view: "month",
     cursor: new Date(),
@@ -345,6 +346,7 @@
   // ---------------------------------------------------------------- projects
   function renderProjects() {
     $("browseLock").hidden = !state.canBrowse;
+    $("projectCount").textContent = state.projects.length || "";
     if (!state.projects.length) {
       $("projectList").innerHTML = '<li class="empty">No projects yet. Add one to see which advisories affect it.</li>';
       return;
@@ -352,38 +354,43 @@
     $("projectList").innerHTML = state.projects.map(projectHtml).join("");
   }
 
+  // Home directories make every path long without telling projects apart.
+  const shortPath = (path) => path.replace(/^\/(?:Users|home)\/[^/]+(?=\/)/, "~");
+
   function projectHtml(p) {
     const s = p.summary;
     const drupal = p.ecosystem === "composer";
-    let meta = "";
-    if (s && drupal) meta = `Drupal core ${esc(s.drupal_core || "not found")} · ${plural(s.drupal_projects, "contrib project")}`;
-    else if (s) meta = `Next.js ${esc(s.next || "not found")} · ${plural(s.packages, "npm package")}`;
-    let config = "";
+    const facts = [];
+    if (s && drupal) facts.push(`Drupal core <b>${esc(s.drupal_core || "not found")}</b>`, plural(s.drupal_projects, "contrib project"));
+    else if (s) facts.push(`Next.js <b>${esc(s.next || "not found")}</b>`, plural(s.packages, "npm package"));
     if (p.config) {
-      config = `Config: ${esc(p.config.source)} · ${p.config.enabled} enabled`
-        + (p.config.splits.length ? ` · splits: ${p.config.splits.map(esc).join(", ")}` : "");
+      facts.push(`${p.config.enabled} enabled modules`
+        + (p.config.splits.length ? ` · splits: ${p.config.splits.map(esc).join(", ")}` : ""));
     } else if (s && drupal) {
-      config = "Config: no core.extension.yml found";
+      facts.push("No core.extension.yml found");
     }
     const source = p.source || (p.branch ? `origin/${p.branch}` : "Local files");
     const confirming = state.pendingRemoval === p.id;
     return `<li class="${state.editingProject === p.id ? "editing" : ""}">
-      <div class="info"><strong>${esc(p.name)}</strong>
-        <div class="path">${esc(p.lock_path)}</div>
-        <div class="meta">Source: ${esc(source)}</div>
-        ${meta ? `<div class="meta">${meta}</div>` : ""}
-        ${config ? `<div class="meta">${config}</div>` : ""}
+      <div class="info">
+        <div class="title"><strong>${esc(p.name)}</strong>${s ? `<span class="eco">${drupal ? "Drupal" : "Next.js"}</span>` : ""}</div>
+        <div class="path" title="${esc(p.lock_path)}">${esc(shortPath(p.lock_path))}</div>
+        <div class="source" title="${p.config ? `Config: ${esc(p.config.source)}` : ""}">${p.branch ? "⎇" : "▤"} ${esc(source)}</div>
+        ${facts.length ? `<div class="facts">${facts.map((f) => `<span>${f}</span>`).join("")}</div>` : ""}
         ${p.warning ? `<div class="notice">⚠ ${esc(p.warning)}</div>` : ""}
         ${p.error ? `<div class="warn">⚠ ${esc(p.error)}</div>` : ""}</div>
       <div class="row-actions">
-        <button type="button" class="btn" data-edit="${esc(p.id)}">Edit</button>
-        <button type="button" class="btn danger${confirming ? " confirm" : ""}" data-remove="${esc(p.id)}">
+        ${p.branch ? `<button type="button" class="btn small${p.warning || p.error ? " attention" : ""}" data-refetch="${esc(p.id)}"
+          title="Fetch origin/${esc(p.branch)} again">${state.refetching === p.id ? "Fetching…" : "↻ Refetch"}</button>` : ""}
+        <button type="button" class="btn small" data-edit="${esc(p.id)}">Edit</button>
+        <button type="button" class="btn small danger${confirming ? " confirm" : ""}" data-remove="${esc(p.id)}">
           ${confirming ? "Confirm remove" : "Remove"}</button>
       </div>
     </li>`;
   }
 
   function applyProjects(data) {
+    $("projectListError").hidden = true;
     state.projects = data.projects;
     state.canBrowse = data.can_browse;
     state.pendingRemoval = null;
@@ -429,6 +436,12 @@
     renderProjects();
   }
 
+  // Errors from row actions; the form's own error line is hidden along with the form.
+  function showListError(message) {
+    $("projectListError").textContent = message;
+    $("projectListError").hidden = false;
+  }
+
   function showProjectError(message) {
     $("projectError").textContent = message;
     $("projectError").hidden = false;
@@ -472,6 +485,21 @@
     }
   }
 
+  async function refetchProject(id) {
+    if (state.refetching) return;
+    state.refetching = id;
+    renderProjects();
+    try {
+      applyProjects(await api("/api/projects/refetch", { id }));
+      await refreshReport();
+    } catch (err) {
+      showListError(err.message);
+    } finally {
+      state.refetching = null;
+      renderProjects();
+    }
+  }
+
   async function removeProject(id) {
     if (state.pendingRemoval !== id) {
       state.pendingRemoval = id; // first click asks for confirmation
@@ -484,7 +512,7 @@
     } catch (err) {
       state.pendingRemoval = null;
       renderProjects();
-      showProjectError(err.message);
+      showListError(err.message);
     }
   }
 
@@ -627,6 +655,8 @@
     $("projectList").addEventListener("click", (e) => {
       const remove = e.target.closest("[data-remove]");
       if (remove) return removeProject(remove.dataset.remove);
+      const refetch = e.target.closest("[data-refetch]");
+      if (refetch) return refetchProject(refetch.dataset.refetch);
       const editButton = e.target.closest("[data-edit]");
       if (editButton) openProjectForm(state.projects.find((p) => p.id === editButton.dataset.edit));
     });

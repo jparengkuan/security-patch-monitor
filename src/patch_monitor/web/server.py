@@ -57,6 +57,8 @@ class ProjectsApi(Protocol):
 
     def update_project(self, project_id: str, name: str, path: str, branch: str | None = None) -> dict[str, Any]: ...
 
+    def refetch_project(self, project_id: str) -> dict[str, Any]: ...
+
     def remove_project(self, project_id: str) -> None: ...
 
 
@@ -208,6 +210,8 @@ class LocalServer:
                     _str_field(body, "path"),
                     _str_field(body, "branch") or None,
                 )
+            elif path == "/api/projects/refetch":
+                self._projects.refetch_project(_str_field(body, "id"))
             elif path == "/api/projects/remove":
                 self._projects.remove_project(_str_field(body, "id"))
             elif path == "/api/browse":

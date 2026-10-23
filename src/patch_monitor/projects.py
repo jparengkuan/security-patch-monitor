@@ -152,6 +152,17 @@ class ProjectService:
         log.info("Project updated: %s (%s, %s)", project.name, project.lock_path, project.branch or "local files")
         return self._describe(project)
 
+    def refetch_project(self, project_id: str) -> dict[str, Any]:
+        """Fetch a git project's branch now, ignoring the rate limit (e.g. after a failed fetch)."""
+        with self._lock:
+            project = next((p for p in self._projects if p.id == project_id), None)
+        if project is None:
+            raise ProjectError("Project not found.")
+        if not project.branch:
+            raise ProjectError("This project reads local files; there is nothing to fetch.")
+        self._reader.sync([project], force=True)
+        return self._describe(project)
+
     def remove_project(self, project_id: str) -> None:
         with self._lock:
             remaining = [p for p in self._projects if p.id != project_id]

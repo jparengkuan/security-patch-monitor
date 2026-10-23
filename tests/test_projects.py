@@ -307,6 +307,27 @@ def test_git_fetch_failure_falls_back_with_warning(
     assert "Could not read from remote repository" in project["warning"] or "does not appear" in project["warning"]
 
 
+@needs_git
+def test_refetch_recovers_after_a_failed_fetch(
+    service: ProjectService, reader: ProjectReader, git_project: tuple[Path, Path, Path], tmp_path: Path
+) -> None:
+    origin, _, checkout = git_project
+    added = service.add_project("Portal", str(checkout / "site" / "composer.lock"), "develop")
+    moved = tmp_path / "moved.git"
+    origin.rename(moved)  # remote temporarily unreachable
+    assert "Could not fetch develop" in service.refetch_project(added["id"])["warning"]
+    moved.rename(origin)
+    assert service.refetch_project(added["id"])["warning"] is None
+
+
+def test_refetch_rejects_local_and_unknown_projects(service: ProjectService, tmp_path: Path) -> None:
+    added = service.add_project("Plain", str(write_site(tmp_path / "plain", {})))
+    with pytest.raises(ProjectError, match="local files"):
+        service.refetch_project(added["id"])
+    with pytest.raises(ProjectError, match="not found"):
+        service.refetch_project("nope")
+
+
 def test_not_a_git_repository(service: ProjectService, tmp_path: Path) -> None:
     lock = write_site(tmp_path / "plain", {})
     with pytest.raises(ProjectError, match="not inside a git repository"):

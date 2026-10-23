@@ -169,15 +169,33 @@ aside h3 .btn { padding: 0 8px }
 body.mode-list .calwrap, body.mode-list aside { display: none }
 body.mode-list .list { display: block }
 
-/* Settings dialog */
-dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); padding: 0; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto }
-dialog::backdrop { background: #0006 }
-dialog form { padding: 18px }
-dialog h2 { margin: 0 0 14px; font-size: 16px }
-.field { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line) }
-.field small { display: block; color: var(--muted) }
-.notif-controls { display: flex; align-items: center; gap: 10px }
-.field input[type=number] { width: 80px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit }
+/* Settings dialog: fixed head and foot, scrolling body */
+dialog {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--fg); padding: 0;
+  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: hidden;
+  box-shadow: 0 20px 60px #0000004d;
+}
+dialog[open] { display: flex }
+dialog::backdrop { background: #0008; backdrop-filter: blur(2px) }
+dialog form { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0 }
+.dlg-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line) }
+.dlg-head h2 { margin: 0; font-size: 16px }
+.icon-btn { border: 0; background: none; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; color: var(--muted) }
+.icon-btn:hover { background: var(--soft); color: var(--fg) }
+.dlg-body { flex: 1; min-height: 0; overflow: auto; padding: 16px 18px 18px; display: grid; gap: 22px; align-content: start }
+.dlg-foot { flex: none; margin: 0; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--bg) }
+.group-title { margin: 0 0 8px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.group-card { border: 1px solid var(--line); border-radius: 10px; padding: 0 14px; background: var(--bg) }
+.field { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0 }
+.field + .field { border-top: 1px solid var(--line) }
+.field label { font-weight: 500 }
+.field small { display: block; color: var(--muted); font-weight: 400; font-size: 12.5px }
+.notif-controls { display: flex; align-items: center; gap: 12px }
+.unit-input { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; background: var(--card); overflow: hidden }
+.unit-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent) }
+.unit-input input[type=number] { width: 56px; padding: 5px 4px 5px 10px; border: 0; background: none; color: var(--fg); font: inherit; outline: none }
+.unit-input span { padding: 0 10px 0 2px; color: var(--muted); font-size: 12.5px }
+.btn.small { padding: 3px 10px; font-size: 12.5px }
 .switch { position: relative; width: 42px; height: 24px; flex: none }
 .switch input { opacity: 0; width: 0; height: 0 }
 .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 999px; cursor: pointer; transition: .15s }
@@ -209,12 +227,16 @@ dialog h2 { margin: 0 0 14px; font-size: 16px }
 .toggle[aria-pressed="true"] { background: var(--crit); border-color: var(--crit); color: #fff }
 
 /* Projects in settings */
-.dialog-actions { padding-top: 14px; border-top: 1px solid var(--line) }
-.projects { margin: 18px 0 4px; padding-top: 14px; border-top: 1px solid var(--line) }
-.projects-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between }
-.projects h3 { margin: 0; font-size: 14px }
-.projects small { color: var(--muted); display: block }
-.project-form { display: grid; gap: 6px; margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg) }
+.projects-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 4px }
+.projects-head .group-title { margin: 0 }
+.group-title .count { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: var(--soft); color: var(--fg); letter-spacing: 0 }
+.group-title .count:empty { display: none }
+.hint { color: var(--muted); font-size: 12.5px }
+.hint details { margin-top: 2px }
+.hint summary { cursor: pointer; width: fit-content; color: var(--accent) }
+.hint ul { margin: 4px 0 0; padding-left: 18px }
+.hint code { font-size: 11.5px }
+.project-form { display: grid; gap: 6px; margin-top: 12px; padding: 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--bg) }
 .project-form label { font-size: 12.5px; font-weight: 600 }
 .project-form input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); font: inherit; min-width: 0 }
 .path-row { display: flex; gap: 6px }
@@ -225,20 +247,34 @@ dialog h2 { margin: 0 0 14px; font-size: 16px }
 .branch-input { display: inline-flex; align-items: center; color: var(--muted); font-family: ui-monospace, monospace; font-size: 12.5px }
 .project-form .branch-input input[type=text] { width: 140px; margin-left: 2px; padding: 3px 6px; font-family: inherit }
 .form-error { color: var(--crit); font-size: 12.5px }
+.list-error { margin-top: 10px }
 .project-form .actions { margin-top: 6px }
-.project-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px }
-.project-list li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; min-width: 0 }
-.project-list .info { flex: 1; min-width: 0 }
-.project-list .path { color: var(--muted); font-size: 12px; overflow-wrap: anywhere }
-.project-list .meta { font-size: 12px; color: var(--muted) }
+.project-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px }
+.project-list li {
+  display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); min-width: 0; transition: border-color .15s;
+}
+.project-list li:hover { border-color: color-mix(in srgb, var(--muted) 50%, var(--line)) }
+.project-list .info { flex: 1; min-width: 0; display: grid; gap: 3px }
+.project-list .title { display: flex; align-items: center; gap: 8px; min-width: 0 }
+.project-list .title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.project-list .eco { flex: none; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 4px; background: var(--soft); color: var(--muted) }
+.project-list .path { color: var(--muted); font: 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere }
+.project-list .source { font-size: 12px; color: var(--muted) }
+.project-list .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px }
+.project-list .facts span { font-size: 11.5px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--muted) }
+.project-list .facts b { color: var(--fg); font-weight: 600 }
 .project-list .warn { color: var(--crit); font-size: 12px }
 .project-list .notice { color: var(--high); font-size: 12px }
 .project-form h4 { margin: 0 0 4px; font-size: 13.5px }
 .project-list .row-actions { display: flex; gap: 6px; flex: none }
 .project-list li.editing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) }
-.project-list .empty { padding: 4px 0 }
+.project-list .empty { padding: 14px; justify-content: center; color: var(--muted); border-style: dashed }
 .btn.danger { color: var(--crit) }
+.btn.danger:hover { background: color-mix(in srgb, var(--crit) 12%, var(--card)) }
 .btn.danger.confirm { background: var(--crit); border-color: var(--crit); color: #fff }
+.btn.attention { color: var(--high); border-color: color-mix(in srgb, var(--high) 50%, var(--line)) }
+.btn:disabled { opacity: .6; cursor: default }
 
 /* Static export has no live API */
 body.static .live { display: none }

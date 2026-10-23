@@ -58,6 +58,13 @@ class FakeProjects:
                 return project
         raise ProjectError("Project not found.")
 
+    def refetch_project(self, project_id: str) -> dict[str, Any]:
+        for project in self.items:
+            if project["id"] == project_id:
+                project["fetched"] = True
+                return project
+        raise ProjectError("Project not found.")
+
     def remove_project(self, project_id: str) -> None:
         if not any(p["id"] == project_id for p in self.items):
             raise ProjectError("Project not found.")
@@ -205,6 +212,9 @@ def test_project_lifecycle(server) -> None:
     assert {k: json.loads(body)["projects"][0][k] for k in ("name", "lock_path", "branch")} == {
         "name": "Site 2", "lock_path": "/s2/composer.lock", "branch": "develop",
     }  # fmt: skip
+    status, _, body = request(srv, "POST", "/api/projects/refetch", body={"id": project["id"]}, token=srv.token)
+    assert (status, json.loads(body)["projects"][0]["fetched"]) == (200, True)
+    assert request(srv, "POST", "/api/projects/refetch", body={"id": "nope"}, token=srv.token)[0] == 422
     unknown = {"id": "x", "name": "x", "path": "/x/composer.lock", "branch": ""}
     assert request(srv, "POST", "/api/projects/update", body=unknown, token=srv.token)[0] == 422
 

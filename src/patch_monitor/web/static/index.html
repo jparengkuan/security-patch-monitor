@@ -69,54 +69,73 @@
     <div class="list" id="list"></div>
   </main>
 
-  <dialog id="settings">
+  <dialog id="settings" aria-labelledby="settingsTitle">
     <form method="dialog">
-      <h2>Settings</h2>
-      <div class="field">
-        <label for="interval">Check interval<small>While the app is open</small></label>
-        <span><input type="number" id="interval" min="1" max="1440" required> min</span>
+      <div class="dlg-head">
+        <h2 id="settingsTitle">Settings</h2>
+        <button class="icon-btn" value="cancel" aria-label="Close" title="Close">✕</button>
       </div>
-      <div class="field">
-        <label for="notif">Notifications<small>System notification for new items</small></label>
-        <span class="notif-controls">
-          <button type="button" class="btn" id="testNotification">Send test</button>
-          <label class="switch"><input type="checkbox" id="notif"><span></span></label>
-        </span>
-      </div>
-      <section class="projects" aria-labelledby="projectsTitle">
-        <div class="projects-head">
-          <div>
-            <h3 id="projectsTitle">Projects</h3>
-            <small>Advisories are checked against each project's lock file: Drupal core and contrib for composer.lock (plus core.extension.yml for modules), Next.js for package-lock.json, yarn.lock or pnpm-lock.yaml. Changes are saved immediately.</small>
-          </div>
-          <button type="button" class="btn" id="addProject">Add project</button>
-        </div>
-        <div class="project-form" id="projectForm" hidden>
-          <h4 id="projectFormTitle">Add project</h4>
-          <label for="projectName">Project name</label>
-          <input type="text" id="projectName" maxlength="80" autocomplete="off" placeholder="e.g. Customer portal">
-          <label for="projectPath">Lock file</label>
-          <div class="path-row">
-            <input type="text" id="projectPath" autocomplete="off" spellcheck="false" placeholder="/path/to/project/composer.lock or package-lock.json">
-            <button type="button" class="btn" id="browseLock">Browse…</button>
-          </div>
-          <fieldset class="source-choice">
-            <legend>Read the lock file (and core.extension.yml) from</legend>
-            <label><input type="radio" name="projectSource" value="git" checked> Latest commit on branch
-              <span class="branch-input">origin/<input type="text" id="projectBranch" value="develop" autocomplete="off" spellcheck="false" aria-label="Branch"></span></label>
-            <label><input type="radio" name="projectSource" value="local"> Local files (working copy)</label>
-            <small>The branch is fetched in the background; your working copy is never changed.</small>
-          </fieldset>
-          <div class="form-error" id="projectError" role="alert" hidden></div>
-          <div class="actions">
-            <button type="button" class="btn" id="cancelProject">Cancel</button>
-            <button type="button" class="btn primary" id="saveProject">Add project</button>
-          </div>
-        </div>
-        <ul class="project-list" id="projectList"></ul>
-      </section>
 
-      <div class="actions dialog-actions">
+      <div class="dlg-body">
+        <section class="group" aria-labelledby="generalTitle">
+          <h3 class="group-title" id="generalTitle">General</h3>
+          <div class="group-card">
+            <div class="field">
+              <label for="interval">Check interval<small>How often to check while the app is open</small></label>
+              <span class="unit-input"><input type="number" id="interval" min="1" max="1440" required autofocus><span>min</span></span>
+            </div>
+            <div class="field">
+              <label for="notif">Notifications<small>System notification for new items</small></label>
+              <span class="notif-controls">
+                <button type="button" class="btn small" id="testNotification">Send test</button>
+                <label class="switch"><input type="checkbox" id="notif"><span></span></label>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section class="group projects" aria-labelledby="projectsTitle">
+          <div class="projects-head">
+            <h3 class="group-title" id="projectsTitle">Projects <span class="count" id="projectCount"></span></h3>
+            <button type="button" class="btn small primary" id="addProject">+ Add project</button>
+          </div>
+          <div class="hint">Advisories are matched against each project's lock file. Project changes are saved immediately.
+            <details>
+              <summary>Supported lock files</summary>
+              <ul>
+                <li><code>composer.lock</code>: Drupal core and contrib, plus <code>core.extension.yml</code> for enabled modules</li>
+                <li><code>package-lock.json</code>, <code>yarn.lock</code> or <code>pnpm-lock.yaml</code>: Next.js</li>
+              </ul>
+            </details>
+          </div>
+          <div class="project-form" id="projectForm" hidden>
+            <h4 id="projectFormTitle">Add project</h4>
+            <label for="projectName">Project name</label>
+            <input type="text" id="projectName" maxlength="80" autocomplete="off" placeholder="e.g. Customer portal">
+            <label for="projectPath">Lock file</label>
+            <div class="path-row">
+              <input type="text" id="projectPath" autocomplete="off" spellcheck="false" placeholder="/path/to/project/composer.lock or package-lock.json">
+              <button type="button" class="btn" id="browseLock">Browse…</button>
+            </div>
+            <fieldset class="source-choice">
+              <legend>Read the lock file (and core.extension.yml) from</legend>
+              <label><input type="radio" name="projectSource" value="git" checked> Latest commit on branch
+                <span class="branch-input">origin/<input type="text" id="projectBranch" value="develop" autocomplete="off" spellcheck="false" aria-label="Branch"></span></label>
+              <label><input type="radio" name="projectSource" value="local"> Local files (working copy)</label>
+              <small>The branch is fetched in the background; your working copy is never changed.</small>
+            </fieldset>
+            <div class="form-error" id="projectError" role="alert" hidden></div>
+            <div class="actions">
+              <button type="button" class="btn" id="cancelProject">Cancel</button>
+              <button type="button" class="btn primary" id="saveProject">Add project</button>
+            </div>
+          </div>
+          <div class="form-error list-error" id="projectListError" role="alert" hidden></div>
+          <ul class="project-list" id="projectList"></ul>
+        </section>
+      </div>
+
+      <div class="dlg-foot actions">
         <button class="btn" value="cancel">Cancel</button>
         <button class="btn primary" id="saveSettings" value="save">Save</button>
       </div>
