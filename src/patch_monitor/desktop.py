@@ -17,7 +17,7 @@ DEFAULT_SIZE = (1280, 820)
 MIN_SIZE = (760, 560)
 SCREEN_FRACTION = (0.9, 0.88)
 MAX_WIDTH = 1600
-LOCK_FILE_TYPES = ("Composer lock file (*.lock)", "All files (*.*)")
+LOCK_FILE_TYPES = ("Lock files (*.lock;*.json;*.yaml)", "All files (*.*)")
 
 
 class DesktopUnavailableError(RuntimeError):
@@ -48,7 +48,7 @@ class WebviewFilePicker:
     def available(self) -> bool:
         return self._window is not None
 
-    def pick_composer_lock(self) -> str | None:
+    def pick_lock_file(self) -> str | None:
         if self._window is None or self._webview is None:
             return None
         selection = self._window.create_file_dialog(

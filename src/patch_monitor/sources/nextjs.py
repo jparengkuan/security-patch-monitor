@@ -8,6 +8,7 @@ from patch_monitor.models import Item, Kind, Product, Severity
 from patch_monitor.sources.base import SourceContext
 from patch_monitor.text import parse_iso_date
 
+NEXT_PACKAGE = "next"
 API_URL = "https://api.github.com/advisories?ecosystem=npm&affects=next&per_page=50&sort=published&direction=desc"
 
 
@@ -35,6 +36,9 @@ class NextJsAdvisorySource:
                     severity=Severity.parse(advisory.get("severity")),
                     detail=f"Affected: {' | '.join(ranges) or '?'} · "
                     f"patched in: {', '.join(patched) or 'no patch yet!'}",
+                    package=NEXT_PACKAGE,
+                    affected=" || ".join(ranges) or None,
+                    patched=tuple(patched),
                 )
             )
         return items

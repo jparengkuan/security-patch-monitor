@@ -164,6 +164,7 @@ def test_nextjs_advisories(ctx: SourceContext, http: FakeHttp) -> None:
     assert item.severity is Severity.CRITICAL
     assert item.title == "RCE in image optimizer (CVE-2026-1)"
     assert item.detail == "Affected: >= 16.0.0, <= 16.4.0 · patched in: 16.4.1"
+    assert (item.package, item.affected, item.patched) == ("next", ">= 16.0.0, <= 16.4.0", ("16.4.1",))
 
 
 @pytest.mark.parametrize(

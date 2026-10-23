@@ -64,13 +64,13 @@ class FilePicker(Protocol):
     @property
     def available(self) -> bool: ...
 
-    def pick_composer_lock(self) -> str | None: ...
+    def pick_lock_file(self) -> str | None: ...
 
 
 class NoFilePicker:
     available = False
 
-    def pick_composer_lock(self) -> str | None:
+    def pick_lock_file(self) -> str | None:
         return None
 
 
@@ -209,7 +209,7 @@ class LocalServer:
             elif path == "/api/browse":
                 if not self._picker.available:
                     raise _RequestError(HTTPStatus.CONFLICT, "file browsing is only available in the desktop app")
-                return self._json({"path": self._picker.pick_composer_lock()})
+                return self._json({"path": self._picker.pick_lock_file()})
             else:
                 raise _RequestError(HTTPStatus.NOT_FOUND, "not found")
         except ProjectError as exc:

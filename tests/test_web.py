@@ -64,7 +64,7 @@ class FakeProjects:
 class FakePicker:
     available = True
 
-    def pick_composer_lock(self) -> str | None:
+    def pick_lock_file(self) -> str | None:
         return "/work/site/composer.lock"
 
 

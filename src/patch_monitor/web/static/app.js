@@ -118,7 +118,8 @@
     </div>`;
   }
 
-  function enabledHtml(enabled) {
+  function enabledHtml(impact) {
+    const enabled = impact.enabled;
     const names = enabled.names.length ? ` (${enabled.names.map(esc).join(", ")})` : "";
     const where = enabled.source ? ` title="${esc(enabled.source)}"` : "";
     switch (enabled.state) {
@@ -127,7 +128,9 @@
       case "split_only":
         return `<span class="state split_only"${where}>Enabled in config split: ${enabled.splits.map(esc).join(", ")}${names}</span>`;
       case "always":
-        return '<span class="state enabled">Drupal core (always enabled)</span>';
+        return impact.package === "drupal/core"
+          ? '<span class="state enabled">Drupal core (always enabled)</span>'
+          : `<span class="state enabled">Installed dependency</span>`;
       case "not_enabled":
         return `<span class="state not_enabled"${where}>Installed, not enabled</span>`;
       default:
@@ -141,7 +144,7 @@
       const rows = impacts.map((i) => {
         const fix = i.fixed_in ? ` → update to <b>${esc(i.fixed_in)}</b> or later` : " → see advisory for the fixed version";
         return `<li><strong>${esc(i.project)}</strong>: <code>${esc(i.package)}</code> ${esc(i.installed)}${fix}
-          <div>${enabledHtml(i.enabled)}<span class="src">${esc(i.source)}</span></div></li>`;
+          <div>${enabledHtml(i)}<span class="src">${esc(i.source)}</span></div></li>`;
       }).join("");
       const active = activeImpacts(item).length;
       const heading = active
@@ -351,11 +354,17 @@
 
   function projectHtml(p) {
     const s = p.summary;
-    const meta = s ? `Drupal core ${esc(s.drupal_core || "not found")} · ${plural(s.drupal_projects, "contrib project")}` : "";
-    const config = p.config
-      ? `Config: ${esc(p.config.source)} · ${p.config.enabled} enabled`
-        + (p.config.splits.length ? ` · splits: ${p.config.splits.map(esc).join(", ")}` : "")
-      : s ? "Config: no core.extension.yml found" : "";
+    const drupal = p.ecosystem === "composer";
+    let meta = "";
+    if (s && drupal) meta = `Drupal core ${esc(s.drupal_core || "not found")} · ${plural(s.drupal_projects, "contrib project")}`;
+    else if (s) meta = `Next.js ${esc(s.next || "not found")} · ${plural(s.packages, "npm package")}`;
+    let config = "";
+    if (p.config) {
+      config = `Config: ${esc(p.config.source)} · ${p.config.enabled} enabled`
+        + (p.config.splits.length ? ` · splits: ${p.config.splits.map(esc).join(", ")}` : "");
+    } else if (s && drupal) {
+      config = "Config: no core.extension.yml found";
+    }
     const source = p.source || (p.branch ? `origin/${p.branch}` : "Local files");
     const confirming = state.pendingRemoval === p.id;
     return `<li class="${state.editingProject === p.id ? "editing" : ""}">
@@ -431,7 +440,7 @@
     const useGit = sourceRadio("git").checked;
     const branch = useGit ? $("projectBranch").value.trim() : "";
     if (!name) return showProjectError("Enter a project name.");
-    if (!path) return showProjectError("Choose a composer.lock file.");
+    if (!path) return showProjectError("Choose a lock file (composer.lock, package-lock.json, yarn.lock or pnpm-lock.yaml).");
     if (useGit && !branch) return showProjectError("Enter a branch, or choose “Local files”.");
 
     const editing = state.editingProject;

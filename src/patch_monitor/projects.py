@@ -1,4 +1,4 @@
-"""Projects: named local checkouts, each identified by its ``composer.lock``."""
+"""Projects: named local checkouts, each identified by its lock file (composer.lock, package-lock.json, ...)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from patch_monitor.lockfiles import SUPPORTED_NAMES, Ecosystem, lock_format
 from patch_monitor.storage import atomic_write_text
 
 if TYPE_CHECKING:
@@ -18,11 +19,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-LOCK_FILE = "composer.lock"
-MAX_LOCK_BYTES = 32 * 1024 * 1024
 MAX_NAME_LENGTH = 80
-DRUPAL_VENDOR = "drupal/"
-DRUPAL_CORE = "drupal/core"
+_SUPPORTED = ", ".join(SUPPORTED_NAMES)
 
 
 class ProjectError(ValueError):
@@ -40,76 +38,42 @@ class Project:
     def directory(self) -> Path:
         return self.lock_path.parent
 
+    @property
+    def lock_name(self) -> str:
+        return self.lock_path.name
+
+    @property
+    def ecosystem(self) -> Ecosystem:
+        return lock_format(self.lock_name).ecosystem
+
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "lock_path": str(self.lock_path), "branch": self.branch}
-
-
-@dataclass(frozen=True, slots=True)
-class LockedPackages:
-    """Installed package versions from a ``composer.lock`` (runtime and dev dependencies)."""
-
-    versions: dict[str, str]
-
-    @classmethod
-    def from_lock(cls, data: dict[str, Any]) -> LockedPackages:
-        versions: dict[str, str] = {}
-        for section in ("packages", "packages-dev"):
-            for package in data.get(section) or []:
-                if isinstance(package, dict) and isinstance(package.get("name"), str):
-                    versions[package["name"]] = str(package.get("version", ""))
-        return cls(versions)
-
-    @property
-    def drupal_core(self) -> str | None:
-        return self.versions.get(DRUPAL_CORE)
-
-    @property
-    def drupal_contrib(self) -> dict[str, str]:
-        """Drupal projects other than core (modules, themes, profiles)."""
         return {
-            name: version
-            for name, version in self.versions.items()
-            if name.startswith(DRUPAL_VENDOR) and not name.startswith(DRUPAL_CORE)
+            "id": self.id,
+            "name": self.name,
+            "lock_path": str(self.lock_path),
+            "branch": self.branch,
+            "ecosystem": self.ecosystem.value,
         }
-
-    def summary(self) -> dict[str, Any]:
-        return {"drupal_core": self.drupal_core, "drupal_projects": len(self.drupal_contrib)}
 
 
 def resolve_lock_path(raw: str) -> Path:
-    """Accept a ``composer.lock`` file or a directory containing one; return the absolute file path."""
+    """Accept a supported lock file, or a directory containing exactly one; return the absolute file path."""
     if not raw or not raw.strip():
-        raise ProjectError("Choose a composer.lock file.")
+        raise ProjectError(f"Choose a lock file ({_SUPPORTED}).")
     path = Path(raw.strip()).expanduser()
     if path.is_dir():
-        path = path / LOCK_FILE
+        found = [path / name for name in SUPPORTED_NAMES if (path / name).is_file()]
+        if not found:
+            raise ProjectError(f"No lock file found in {path}. Run `composer install` or `npm install` first.")
+        if len(found) > 1:
+            names = " and ".join(p.name for p in found)
+            raise ProjectError(f"{path} contains {names}; choose the lock file you want to check.")
+        path = found[0]
     if not path.exists():
-        raise ProjectError(f"No composer.lock found at {path}. Run `composer install` in the project first.")
-    if path.name != LOCK_FILE or not path.is_file():
-        raise ProjectError("The selected file must be named composer.lock.")
+        raise ProjectError(f"No lock file found at {path}.")
+    if path.name not in SUPPORTED_NAMES or not path.is_file():
+        raise ProjectError(f"The selected file must be one of: {_SUPPORTED}.")
     return path.resolve()
-
-
-def parse_lock(text: str) -> LockedPackages:
-    """Parse and validate the contents of a composer.lock file."""
-    if len(text) > MAX_LOCK_BYTES:
-        raise ProjectError("composer.lock is unexpectedly large.")
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ProjectError(f"composer.lock is not valid JSON (line {exc.lineno}).") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("packages"), list):
-        raise ProjectError("This is not a valid composer.lock (no package list).")
-    return LockedPackages.from_lock(data)
-
-
-def read_lock(path: Path) -> LockedPackages:
-    try:
-        return parse_lock(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ProjectError(f"composer.lock not found at {path}.") from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        raise ProjectError(f"composer.lock cannot be read: {exc}.") from exc
 
 
 class ProjectStore(Protocol):

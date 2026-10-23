@@ -72,6 +72,7 @@ class Item:
     detail: str = ""
     package: str | None = None  # Composer package an advisory applies to, e.g. "drupal/webform"
     affected: str | None = None  # affected version range, e.g. "<4.2.1 || >=5.0.0 <5.0.3"
+    patched: tuple[str, ...] = ()  # first fixed version per release line, when the source lists them
 
     @property
     def key(self) -> str:
@@ -90,6 +91,7 @@ class Item:
             "detail": self.detail,
             "package": self.package,
             "affected": self.affected,
+            "patched": list(self.patched),
             "new": new,
         }
 

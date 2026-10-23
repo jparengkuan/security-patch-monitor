@@ -70,8 +70,9 @@ class ProjectFiles(Protocol):
 
 
 class WorkingTreeFiles:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, lock_name: str = "composer.lock") -> None:
         self._root = root
+        self._lock_name = lock_name
 
     @property
     def label(self) -> str:
@@ -79,7 +80,7 @@ class WorkingTreeFiles:
 
     @property
     def fingerprint(self) -> str:
-        lock = self._root / "composer.lock"
+        lock = self._root / self._lock_name
         try:
             return f"local:{lock.stat().st_mtime_ns}"
         except OSError:

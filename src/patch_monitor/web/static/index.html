@@ -84,7 +84,7 @@
         <div class="projects-head">
           <div>
             <h3 id="projectsTitle">Projects</h3>
-            <small>Drupal core and contrib advisories are checked against each project's composer.lock (and core.extension.yml for modules). Changes are saved immediately.</small>
+            <small>Advisories are checked against each project's lock file: Drupal core and contrib for composer.lock (plus core.extension.yml for modules), Next.js for package-lock.json, yarn.lock or pnpm-lock.yaml. Changes are saved immediately.</small>
           </div>
           <button type="button" class="btn" id="addProject">Add project</button>
         </div>
@@ -92,13 +92,13 @@
           <h4 id="projectFormTitle">Add project</h4>
           <label for="projectName">Project name</label>
           <input type="text" id="projectName" maxlength="80" autocomplete="off" placeholder="e.g. Customer portal">
-          <label for="projectPath">composer.lock</label>
+          <label for="projectPath">Lock file</label>
           <div class="path-row">
-            <input type="text" id="projectPath" autocomplete="off" spellcheck="false" placeholder="/path/to/project/composer.lock">
+            <input type="text" id="projectPath" autocomplete="off" spellcheck="false" placeholder="/path/to/project/composer.lock or package-lock.json">
             <button type="button" class="btn" id="browseLock">Browse…</button>
           </div>
           <fieldset class="source-choice">
-            <legend>Read composer.lock and core.extension.yml from</legend>
+            <legend>Read the lock file (and core.extension.yml) from</legend>
             <label><input type="radio" name="projectSource" value="git" checked> Latest commit on branch
               <span class="branch-input">origin/<input type="text" id="projectBranch" value="develop" autocomplete="off" spellcheck="false" aria-label="Branch"></span></label>
             <label><input type="radio" name="projectSource" value="local"> Local files (working copy)</label>

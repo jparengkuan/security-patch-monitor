@@ -175,7 +175,8 @@ def test_add_list_and_remove_local_project(service: ProjectService, tmp_path: Pa
     assert added["lock_path"] == str(lock.resolve())
     assert added["branch"] is None
     assert added["source"] == "Local files"
-    assert added["summary"] == {"drupal_core": "10.6.3", "drupal_projects": 2}
+    assert added["summary"] == {"ecosystem": "composer", "drupal_core": "10.6.3", "drupal_projects": 2}
+    assert added["ecosystem"] == "composer"
     assert added["config"] == {"source": "config/sync/core.extension.yml", "enabled": 2, "splits": []}
 
     reloaded = ProjectService(JsonProjectStore(tmp_path / "data" / "projects.json"), reader)
@@ -192,7 +193,7 @@ def test_add_list_and_remove_local_project(service: ProjectService, tmp_path: Pa
     [
         ("", "composer.lock", "{}", "Enter a project name"),
         ("x" * 81, "composer.lock", "{}", "at most 80"),
-        ("Site", "composer.json", "{}", r"must be named composer\.lock"),
+        ("Site", "composer.json", "{}", "must be one of"),
         ("Site", "composer.lock", "{not json", "not valid JSON"),
         ("Site", "composer.lock", '{"name": "x"}', r"not a valid composer\.lock"),
     ],
@@ -207,7 +208,7 @@ def test_add_project_validation(
 
 
 def test_add_project_rejects_missing_file_and_duplicates(service: ProjectService, tmp_path: Path) -> None:
-    with pytest.raises(ProjectError, match=r"No composer\.lock found"):
+    with pytest.raises(ProjectError, match="No lock file found"):
         service.add_project("Site", str(tmp_path / "missing"))
     lock = write_site(tmp_path / "a", {})
     service.add_project("Site", str(lock))
@@ -458,3 +459,62 @@ def test_drupal_core_advisories_match_the_locked_core_version(
         ("Old", "11.4.9", "11.4.10", EnabledState.ALWAYS, True),
         ("Ten", "10.6.18", "10.6.19", EnabledState.ALWAYS, True),
     ]
+
+
+# -- Next.js projects -------------------------------------------------------------------
+
+
+def write_npm_project(root: Path, next_version: str) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    lock = {
+        "name": "web",
+        "lockfileVersion": 3,
+        "packages": {
+            "": {"name": "web", "dependencies": {"next": "^16.0.0"}},
+            "node_modules/next": {"version": next_version},
+            "node_modules/react": {"version": "19.2.0"},
+            "node_modules/some-lib/node_modules/next": {"version": "1.0.0"},  # nested copy is ignored
+        },
+    }
+    (root / "package-lock.json").write_text(json.dumps(lock))
+    return root / "package-lock.json"
+
+
+def nextjs_advisory(affected: str, patched: tuple[str, ...]) -> Item:
+    return Item(
+        Product.NEXTJS, Kind.ADVISORY, "Next.js: RCE in image optimizer (CVE-2026-1)", date(2026, 10, 22),
+        severity=Severity.CRITICAL, package="next", affected=affected, patched=patched,
+    )  # fmt: skip
+
+
+def test_nextjs_project_is_matched_against_next_advisories(
+    service: ProjectService, reader: ProjectReader, tmp_path: Path
+) -> None:
+    added = service.add_project("Frontend", str(write_npm_project(tmp_path / "web", "16.2.0")))
+    assert added["ecosystem"] == "npm"
+    assert added["summary"] == {"ecosystem": "npm", "next": "16.2.0", "packages": 2}
+    assert added["config"] is None  # no core.extension.yml lookup for npm projects
+    service.add_project("Safe", str(write_npm_project(tmp_path / "safe", "16.4.1")))
+    service.add_project("Drupal", str(write_site(tmp_path / "drupal", {"drupal/core": "11.4.11"})))
+
+    item = nextjs_advisory(">= 16.0.0, <= 16.4.0 || >= 15.0.0, < 15.5.29", ("16.4.1", "15.5.29"))
+    [impact] = ImpactAnalyzer(service.projects, reader).assess([item])[item.key]
+    assert (impact.project, impact.installed, impact.fixed_in) == ("Frontend", "16.2.0", "16.4.1")
+    assert impact.enabled.state is EnabledState.ALWAYS and impact.active
+
+
+def test_nextjs_fixed_version_prefers_the_installed_major(
+    service: ProjectService, reader: ProjectReader, tmp_path: Path
+) -> None:
+    service.add_project("Old", str(write_npm_project(tmp_path / "old", "15.3.0")))
+    item = nextjs_advisory(">= 15.0.0, <= 15.5.28 || >= 16.0.0, <= 16.4.0", ("16.4.1", "15.5.29"))
+    [impact] = ImpactAnalyzer(service.projects, reader).assess([item])[item.key]
+    assert impact.fixed_in == "15.5.29"
+
+
+def test_directory_with_several_lock_files_must_be_specific(service: ProjectService, tmp_path: Path) -> None:
+    write_site(tmp_path / "mixed", {})
+    write_npm_project(tmp_path / "mixed", "16.0.0")
+    with pytest.raises(ProjectError, match="choose the lock file"):
+        service.add_project("Mixed", str(tmp_path / "mixed"))
+    assert service.add_project("Mixed", str(tmp_path / "mixed" / "package-lock.json"))["ecosystem"] == "npm"

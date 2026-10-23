@@ -17,6 +17,7 @@ from patch_monitor.drupal_config import (
     extension_names,
     load_extension_config,
 )
+from patch_monitor.lockfiles import Ecosystem, LockedPackages, LockError, parse_lock_file
 from patch_monitor.project_files import (
     GitRefFiles,
     GitRepository,
@@ -27,7 +28,7 @@ from patch_monitor.project_files import (
     WorkingTreeFiles,
     run_git,
 )
-from patch_monitor.projects import LOCK_FILE, LockedPackages, Project, ProjectError, parse_lock
+from patch_monitor.projects import Project, ProjectError
 
 log = logging.getLogger(__name__)
 
@@ -118,27 +119,33 @@ class ProjectReader:
     # -- internals -------------------------------------------------------------------
 
     def _build(self, project: Project, files: ProjectFiles) -> ProjectState:
+        lock = project.lock_name
         try:
-            text = files.read_text(LOCK_FILE)
+            text = files.read_text(lock)
         except FileNotFoundError as exc:
-            raise ProjectError(f"composer.lock not found in {files.label}.") from exc
+            raise ProjectError(f"{lock} not found in {files.label}.") from exc
         except (OSError, UnicodeDecodeError, ProjectFilesError) as exc:
-            raise ProjectError(f"composer.lock cannot be read from {files.label}: {exc}") from exc
-        local = files if not project.branch else WorkingTreeFiles(project.directory)
+            raise ProjectError(f"{lock} cannot be read from {files.label}: {exc}") from exc
+        try:
+            locked = parse_lock_file(lock, text)
+        except LockError as exc:
+            raise ProjectError(str(exc)) from exc
+        drupal = locked.ecosystem is Ecosystem.COMPOSER
         return ProjectState(
             project=project,
             source=files.label,
-            locked=parse_lock(text),
-            extensions=load_extension_config(files),
+            locked=locked,
+            # Enabled state only exists for Drupal; npm projects have no core.extension.yml to search for.
+            extensions=load_extension_config(files) if drupal else None,
             files=files,
-            local=local,
+            local=files if not project.branch else WorkingTreeFiles(project.directory, project.lock_name),
         )
 
     def _files(self, project: Project) -> ProjectFiles:
         if not project.branch:
             if not project.lock_path.is_file():
-                raise ProjectError(f"composer.lock not found at {project.lock_path}.")
-            return WorkingTreeFiles(project.directory)
+                raise ProjectError(f"{project.lock_name} not found at {project.lock_path}.")
+            return WorkingTreeFiles(project.directory, project.lock_name)
         repo = self._repo(project)
         prefix = project.directory.resolve().relative_to(repo.toplevel).as_posix()
         try:

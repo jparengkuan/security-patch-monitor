@@ -1,7 +1,8 @@
-"""Which configured projects are affected by a Drupal core or contrib advisory.
+"""Which configured projects are affected by an advisory.
 
-For every project the installed version comes from its ``composer.lock`` and the enabled state from its
-exported ``core.extension.yml``, both read from the project's source (working tree or git branch).
+The installed version comes from the project's lock file. For Drupal contrib modules the enabled state comes
+from the exported ``core.extension.yml``; Drupal core and npm packages are always in use. Everything is read
+from the project's source (working tree or git branch).
 """
 
 from __future__ import annotations
@@ -12,10 +13,11 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from patch_monitor.drupal_config import EnabledState, EnabledStatus
+from patch_monitor.lockfiles import DRUPAL_CORE, DRUPAL_VENDOR, Ecosystem
 from patch_monitor.models import Item
 from patch_monitor.project_reader import ProjectReader, ProjectState
-from patch_monitor.projects import DRUPAL_CORE, DRUPAL_VENDOR, Project, ProjectError
-from patch_monitor.version import match_constraint
+from patch_monitor.projects import Project, ProjectError
+from patch_monitor.version import Version, match_constraint
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +60,7 @@ class ImpactAssessor(Protocol):
 
 
 class ImpactAnalyzer:
-    """Matches Drupal core and contrib advisories against the locked versions of every project."""
+    """Matches advisories that name a package (Drupal core/contrib, Next.js) against every project's lock file."""
 
     def __init__(self, projects: Callable[[], list[Project]], reader: ProjectReader) -> None:
         self._projects = projects
@@ -71,7 +73,7 @@ class ImpactAnalyzer:
         self._reader.sync(self._projects())
 
     def assess(self, items: Iterable[Item]) -> dict[str, list[Impact]]:
-        relevant = [item for item in items if item.package and item.package.startswith(DRUPAL_VENDOR)]
+        relevant = [item for item in items if item.package]
         if not relevant:
             return {}
         states = self._states()
@@ -101,16 +103,26 @@ def _assess(item: Item, state: ProjectState) -> Impact | None:
     match = match_constraint(installed, item.affected)
     if match is None or not match.affected:
         return None
-    if package == DRUPAL_CORE:
-        enabled = EnabledStatus(EnabledState.ALWAYS)
-    else:
-        enabled = state.enabled(package.removeprefix(DRUPAL_VENDOR))
+    # Drupal contrib modules can be switched off; core and npm dependencies are always in use.
+    contrib = state.locked.ecosystem is Ecosystem.COMPOSER and package != DRUPAL_CORE
+    enabled = state.enabled(package.removeprefix(DRUPAL_VENDOR)) if contrib else EnabledStatus(EnabledState.ALWAYS)
     return Impact(
         project_id=state.project.id,
         project=state.project.name,
         package=package,
         installed=installed,
-        fixed_in=match.fixed_in,
+        fixed_in=match.fixed_in or _first_patched_after(installed, item.patched),
         enabled=enabled,
         source=state.source,
     )
+
+
+def _first_patched_after(installed: str, patched: tuple[str, ...]) -> str | None:
+    """The lowest listed fixed version above the installed one, preferring the same major version."""
+    current = Version.parse(installed)
+    if current is None:
+        return None
+    newer = sorted(v for v in (Version.parse(p) for p in patched) if v is not None and v > current)
+    same_major = [v for v in newer if v.numbers[0] == current.numbers[0]]
+    candidates = same_major or newer
+    return str(candidates[0]) if candidates else None
