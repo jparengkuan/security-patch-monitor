@@ -73,10 +73,10 @@ func post(_ payload: Payload, center: UNUserNotificationCenter) {
         content.subtitle = payload.subtitle
         content.body = payload.body
         content.threadIdentifier = payload.thread
-        content.categoryIdentifier = advisoryCategory
         content.sound = .default
         if let url = payload.url {
             content.userInfo = ["url": url]
+            content.categoryIdentifier = advisoryCategory  // "Open advisory" only when there is something to open
         }
         let request = UNNotificationRequest(identifier: payload.id, content: content, trigger: nil)
         center.add(request) { error in
