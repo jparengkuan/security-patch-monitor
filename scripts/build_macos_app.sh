@@ -25,11 +25,22 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/packaging/macos/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
+# The Dock names a process after the bundle its executable lives in. The venv's python hands over to the
+# framework's Python.app (shown as "Python"), so run a copy of that binary from inside this bundle instead;
+# __PYVENV_LAUNCHER__ makes it use the venv, as the framework stub would.
+PYTHON_APP_BIN="$("$VENV/bin/python" -c 'import sys, pathlib; print(pathlib.Path(sys._base_executable).parents[1] / "Resources/Python.app/Contents/MacOS/Python")')"
+if [[ -x "$PYTHON_APP_BIN" ]]; then
+  cp "$PYTHON_APP_BIN" "$APP/Contents/MacOS/python"
+  RUN="exec env __PYVENV_LAUNCHER__=\"$VENV/bin/python\" \"$APP/Contents/MacOS/python\" -m patch_monitor \"\$@\""
+else
+  RUN="exec \"$VENV/bin/security-patch-monitor\" \"\$@\""  # not a framework build: the Dock shows "Python"
+fi
+
 cat > "$APP/Contents/MacOS/SecurityPatchMonitor" <<EOF
 #!/usr/bin/env bash
 # Tells the app where its bundle (and the notifier helper inside it) lives.
 export SPM_APP_BUNDLE="$APP"
-exec "$VENV/bin/security-patch-monitor" "\$@"
+$RUN
 EOF
 chmod +x "$APP/Contents/MacOS/SecurityPatchMonitor"
 
