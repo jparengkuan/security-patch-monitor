@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="spm-token" content="{{TOKEN}}">
+  <title>Security Patch Monitor</title>
+  <link rel="icon" href="icon.png">
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body class="mode-cal">
+  <header>
+    <img src="icon.png" alt="" width="26" height="26">
+    <h1>Security Patch Monitor</h1>
+    <div class="status live" id="status" role="status"><span class="dot"></span><span id="statusText">Loading…</span></div>
+    <button class="btn live" id="checkNow" type="button">Check now</button>
+    <button class="btn live" id="openSettings" type="button" title="Settings">⚙︎ Settings</button>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg" id="modes" role="tablist">
+      <button type="button" data-mode="cal" class="on">Calendar</button>
+      <button type="button" data-mode="list">List</button>
+    </div>
+    <div class="chips" id="products" data-filter="products"></div>
+    <div class="spacer"></div>
+    <div class="chips" id="sevs" data-filter="sevs"></div>
+    <div class="chips" id="kinds" data-filter="kinds"></div>
+  </div>
+
+  <div class="newbar" id="newbar" hidden>
+    <b id="newCount"></b><span>since the previous check</span>
+    <button type="button" id="showNew">Show</button>
+    <button type="button" id="dismissNew" class="live">Mark as seen</button>
+  </div>
+  <div class="errors" id="errors" hidden></div>
+
+  <main>
+    <div class="calwrap">
+      <div class="calhead">
+        <button class="btn" id="prev" type="button" aria-label="Previous">‹</button>
+        <button class="btn" id="todayBtn" type="button">Today</button>
+        <button class="btn" id="next" type="button" aria-label="Next">›</button>
+        <h2 id="calTitle"></h2>
+        <div class="seg" id="views">
+          <button type="button" data-view="day">Day</button>
+          <button type="button" data-view="week">Week</button>
+          <button type="button" data-view="month" class="on">Month</button>
+        </div>
+      </div>
+      <div class="calbody" id="calbody"></div>
+      <div class="legend">
+        <span><i class="lg-upcoming"></i>Announced</span>
+        <span><i class="lg-expected"></i>Expected</span>
+        <span><i class="lg-advisory"></i>Advisory</span>
+        <span>⏻ End of support</span>
+        <span><span class="lg-new">●</span> New</span>
+        <span>Colour = severity:
+          <b class="sev-critical">critical</b> <b class="sev-high">high</b>
+          <b class="sev-moderate">moderate</b> <b class="sev-info">info</b></span>
+      </div>
+    </div>
+    <aside>
+      <h3 id="sideTitle"></h3>
+      <div class="side" id="side"></div>
+    </aside>
+    <div class="list" id="list"></div>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog">
+      <h2>Settings</h2>
+      <div class="field">
+        <label for="interval">Check interval<small>While the app is open</small></label>
+        <span><input type="number" id="interval" min="1" max="1440" required> min</span>
+      </div>
+      <div class="field">
+        <label for="notif">Notifications<small>System notification for new items</small></label>
+        <label class="switch"><input type="checkbox" id="notif"><span></span></label>
+      </div>
+      <div class="actions">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn primary" id="saveSettings" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

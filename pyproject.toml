@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "security-patch-monitor"
+version = "3.0.0"
+description = "Desktop calendar of announced, expected and released security patches for Drupal, PHP, Next.js and Node.js."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Jim Parengkuan" }]
+dependencies = [
+    "defusedxml>=0.7.1",
+]
+
+[project.optional-dependencies]
+desktop = ["pywebview>=5.0"]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+security-patch-monitor = "patch_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+patch_monitor = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "N", "S", "PTH", "RET"]
+ignore = [
+    "S603",   # subprocess with fixed argument lists is intended (notifications)
+    "S607",   # notification binaries are resolved via PATH on purpose
+    "S310",   # urlopen is restricted to https URLs in HttpClient
+    "RUF001", # en dashes and other typographic characters in UI text are intended
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["webview", "webview.*", "AppKit", "Foundation", "defusedxml", "defusedxml.*"]
+ignore_missing_imports = true
