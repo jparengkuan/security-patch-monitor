@@ -12,7 +12,7 @@ from typing import Any
 
 from patch_monitor.impact import Impact, ImpactAssessor
 from patch_monitor.models import Report
-from patch_monitor.notifications import Notifier, summarize
+from patch_monitor.notifications import Notifier, compose, sample_notification
 from patch_monitor.report import ReportProvider
 from patch_monitor.seen import SeenStore
 from patch_monitor.settings import Settings, SettingsStore
@@ -118,7 +118,7 @@ class Monitor:
                 newly_seen = self._register(report)
                 if newly_seen and settings.notifications:
                     new_items = [item for item in report.items if item.key in newly_seen]
-                    self._notifier.notify(*summarize(new_items, self._assess(report)))
+                    self._notifier.notify(compose(new_items, self._assess(report)))
                 return report
             finally:
                 with self._state_lock:
@@ -143,6 +143,10 @@ class Monitor:
     def mark_all_seen(self) -> None:
         with self._state_lock:
             self._new_keys = frozenset()
+
+    def send_test_notification(self) -> None:
+        """Sent even when notifications are switched off, so the user can check the system side."""
+        self._notifier.notify(sample_notification())
 
     # -- lifecycle -------------------------------------------------------------
 

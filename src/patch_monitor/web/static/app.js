@@ -604,6 +604,22 @@
       $("settings").showModal();
       loadProjects();
     });
+    $("testNotification").addEventListener("click", async (e) => {
+      const button = e.currentTarget;
+      button.disabled = true;
+      button.textContent = "Sending…";
+      try {
+        // The first time on macOS this waits until the permission prompt is answered.
+        await api("/api/test-notification", {});
+        button.textContent = "Sent";
+      } catch {
+        button.textContent = "Failed";
+      }
+      setTimeout(() => {
+        button.textContent = "Send test";
+        button.disabled = false;
+      }, 2000);
+    });
     $("addProject").addEventListener("click", () => openProjectForm());
     $("cancelProject").addEventListener("click", closeProjectForm);
     $("saveProject").addEventListener("click", saveProject);

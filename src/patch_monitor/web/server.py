@@ -45,6 +45,8 @@ class MonitorApi(Protocol):
 
     def mark_all_seen(self) -> None: ...
 
+    def send_test_notification(self) -> None: ...
+
 
 class ProjectsApi(Protocol):
     """Project management as needed by the web layer; raises ``ProjectError`` for invalid input."""
@@ -187,6 +189,8 @@ class LocalServer:
             self._api.request_check()
         elif path == "/api/seen":
             self._api.mark_all_seen()
+        elif path == "/api/test-notification":
+            self._api.send_test_notification()
         else:
             raise _RequestError(HTTPStatus.NOT_FOUND, "not found")
         return self._json(self._api.status_dict())

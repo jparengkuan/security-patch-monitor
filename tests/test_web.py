@@ -33,6 +33,9 @@ class FakeApi:
     def mark_all_seen(self) -> None:
         self.calls.append("seen")
 
+    def send_test_notification(self) -> None:
+        self.calls.append("test-notification")
+
 
 class FakeProjects:
     def __init__(self) -> None:
@@ -146,10 +149,11 @@ def test_post_commands(server) -> None:
     srv, api = server
     assert request(srv, "POST", "/api/check", body={}, token=srv.token)[0] == 200
     assert request(srv, "POST", "/api/seen", body={}, token=srv.token)[0] == 200
+    assert request(srv, "POST", "/api/test-notification", body={}, token=srv.token)[0] == 200
     status, _, body = request(srv, "POST", "/api/settings", body={"interval_minutes": 10}, token=srv.token)
     assert status == 200
     assert json.loads(body)["settings"] == {"interval_minutes": 10}
-    assert api.calls == ["check", "seen"]
+    assert api.calls == ["check", "seen", "test-notification"]
 
 
 def test_post_validation(server) -> None:

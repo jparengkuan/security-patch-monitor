@@ -19,7 +19,7 @@ from patch_monitor.http import UrllibHttpClient
 from patch_monitor.impact import ImpactAnalyzer
 from patch_monitor.logging_setup import configure_logging
 from patch_monitor.monitor import Monitor, report_with_impacts
-from patch_monitor.notifications import platform_notifier
+from patch_monitor.notifications import MacOSNativeNotifier, Notifier, platform_notifier, sample_notification
 from patch_monitor.project_reader import ProjectReader
 from patch_monitor.projects import JsonProjectStore, ProjectService
 from patch_monitor.report import ReportBuilder
@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("--browser", action="store_true", help="open the UI in a browser instead of a window")
     output.add_argument("--json", action="store_true", help="print one report as JSON and exit")
     output.add_argument("--html", metavar="FILE", type=Path, help="write a self-contained HTML report and exit")
+    output.add_argument("--test-notification", action="store_true", help="show a test notification and exit")
     parser.add_argument("--port", type=int, default=0, help="UI port (default: random, or 8765 with --browser)")
     parser.add_argument("--data-dir", type=Path, help="where settings, state and logs are stored")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
@@ -65,14 +66,21 @@ def build_projects(paths: AppPaths) -> tuple[ProjectService, ImpactAnalyzer]:
     return projects, ImpactAnalyzer(projects.projects, reader)
 
 
-def build_monitor(paths: AppPaths, impacts: ImpactAnalyzer) -> Monitor:
+def build_monitor(paths: AppPaths, impacts: ImpactAnalyzer, notifier: Notifier) -> Monitor:
     return Monitor(
         provider=build_report_builder(),
         settings_store=JsonSettingsStore(paths.settings_file),
         seen_store=JsonSeenStore(paths.seen_file),
-        notifier=platform_notifier(),
+        notifier=notifier,
         impacts=impacts,
     )
+
+
+def request_notification_permission(notifier: Notifier) -> None:
+    """On macOS, ask for permission at startup (only prompts on first launch); in the background, since the
+    helper waits for the user's answer."""
+    if isinstance(notifier, MacOSNativeNotifier):
+        threading.Thread(target=notifier.authorize, name="notification-permission", daemon=True).start()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -80,6 +88,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     paths = AppPaths.default(args.data_dir)
     one_shot = args.json or args.html
     configure_logging(None if one_shot else paths.log_file, verbose=args.verbose)
+
+    if args.test_notification:
+        platform_notifier().notify(sample_notification())
+        return 0
 
     if one_shot:
         # One-shot reports never touch the notification state of the running app.
@@ -97,7 +109,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     port = args.port or (BROWSER_PORT if args.browser else 0)
     projects, impacts = build_projects(paths)
-    return run_app(build_monitor(paths, impacts), projects, port=port, browser=args.browser)
+    notifier = platform_notifier()
+    monitor = build_monitor(paths, impacts, notifier)
+    if monitor.settings.notifications:
+        request_notification_permission(notifier)
+    return run_app(monitor, projects, port=port, browser=args.browser)
 
 
 def run_app(monitor: Monitor, projects: ProjectService, *, port: int, browser: bool) -> int:

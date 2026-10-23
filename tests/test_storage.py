@@ -4,7 +4,13 @@ import json
 from datetime import date
 from pathlib import Path
 
-from patch_monitor.notifications import LinuxNotifier, MacOSNotifier, WindowsNotifier
+from patch_monitor.notifications import (
+    LinuxNotifier,
+    MacOSNativeNotifier,
+    MacOSNotifier,
+    Notification,
+    WindowsNotifier,
+)
 from patch_monitor.seen import JsonSeenStore
 from patch_monitor.settings import JsonSettingsStore, Settings
 from patch_monitor.storage import atomic_write_text
@@ -50,14 +56,50 @@ def test_atomic_write_leaves_no_temp_files(tmp_path: Path) -> None:
     assert [p.name for p in tmp_path.iterdir()] == ["file.txt"]
 
 
+class Recorder:
+    def __init__(self, result: bool = True) -> None:
+        self.calls: list[tuple[list[str], str | None]] = []
+        self.result = result
+
+    def __call__(self, args: list[str], stdin: str | None) -> bool:
+        self.calls.append((args, stdin))
+        return self.result
+
+
 def test_notifiers_escape_user_content() -> None:
-    calls: list[list[str]] = []
-    MacOSNotifier(calls.append).notify('Say "hi"', "it's \\ fine")
-    assert calls[-1][:2] == ["osascript", "-e"]
-    assert '"Say \\"hi\\""' in calls[-1][2]
+    run = Recorder()
+    MacOSNotifier(run).notify(Notification(title='Say "hi"', subtitle="sub", body="it's \\ fine"))
+    args, _ = run.calls[-1]
+    assert args[:2] == ["osascript", "-e"]
+    assert '"Say \\"hi\\""' in args[2] and 'subtitle "sub"' in args[2]
 
-    WindowsNotifier(calls.append).notify("O'Brien", "x")
-    assert "'O''Brien'" in calls[-1][-1]
+    WindowsNotifier(run).notify(Notification(title="O'Brien", body="x"))
+    assert "'O''Brien'" in run.calls[-1][0][-1]
 
-    LinuxNotifier(runner=calls.append).notify("t", "m")
-    assert calls[-1][-2:] == ["t", "m"]
+    LinuxNotifier(runner=run).notify(Notification(title="t", subtitle="s", body="m"))
+    assert run.calls[-1][0][-2:] == ["t", "s\nm"]
+
+
+def test_native_notifier_sends_json_and_falls_back(tmp_path: Path) -> None:
+    helper = tmp_path / "notifier"
+    notification = Notification(title="T", subtitle="S", body="B", url="https://x", thread="drupal", id="1")
+    fallback = Recorder()
+
+    MacOSNativeNotifier(helper, MacOSNotifier(fallback), Recorder(result=True)).notify(notification)
+    assert fallback.calls == []
+
+    native = Recorder(result=False)
+    MacOSNativeNotifier(helper, MacOSNotifier(fallback), native).notify(notification)
+    args, stdin = native.calls[0]
+    assert args == [str(helper), "post"]
+    assert json.loads(stdin or "") == {
+        "title": "T", "body": "B", "subtitle": "S", "url": "https://x", "thread": "drupal", "id": "1",
+    }  # fmt: skip
+    assert fallback.calls[0][0][0] == "osascript"  # helper failed → AppleScript fallback
+
+
+def test_native_notifier_asks_for_permission(tmp_path: Path) -> None:
+    helper = tmp_path / "notifier"
+    run = Recorder()
+    MacOSNativeNotifier(helper, runner=run).authorize()
+    assert run.calls == [([str(helper), "authorize"], None)]

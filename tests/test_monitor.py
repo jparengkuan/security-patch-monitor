@@ -7,7 +7,7 @@ import pytest
 
 from patch_monitor.models import Item, Kind, Product, Report, Severity
 from patch_monitor.monitor import Monitor
-from patch_monitor.notifications import summarize
+from patch_monitor.notifications import Notification, compose
 from patch_monitor.report import ReportBuilder
 from patch_monitor.seen import JsonSeenStore
 from patch_monitor.settings import JsonSettingsStore, Settings
@@ -30,8 +30,8 @@ class RecordingNotifier:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
 
-    def notify(self, title: str, message: str) -> None:
-        self.sent.append((title, message))
+    def notify(self, notification: Notification) -> None:
+        self.sent.append((notification.title, notification.subtitle, notification.body))
 
 
 class FakeClock:
@@ -69,7 +69,7 @@ def test_new_items_are_notified_and_highlighted(parts) -> None:
     monitor.check()
     provider.items = [item("A"), item("B", Kind.UPCOMING, Severity.CRITICAL), item("C")]
     monitor.check()
-    assert notifier.sent == [("2 new security items · 1 announced", "Drupal: B; Drupal: C")]
+    assert notifier.sent == [("2 new security items", "1 announced · 1 high", "Drupal: B\nDrupal: C")]
     new = {i["title"] for i in monitor.snapshot()["report"]["items"] if i["new"]}
     assert new == {"B", "C"}
 
@@ -102,6 +102,15 @@ def test_items_reappearing_after_source_failure_do_not_renotify(parts) -> None:
     provider.items = [item("A")]
     monitor.check()
     assert notifier.sent == []
+
+
+def test_test_notification_is_sent_even_when_notifications_are_off(parts) -> None:
+    monitor, _, notifier, _ = parts
+    monitor.update_settings({"notifications": False})
+    monitor.send_test_notification()
+    assert notifier.sent == [
+        ("Security Patch Monitor notifications are working", "", "New security advisories will appear like this.")
+    ]
 
 
 def test_notifications_can_be_disabled(parts) -> None:
@@ -143,7 +152,27 @@ def test_report_builder_isolates_failing_sources() -> None:
     assert report.errors == ("broken: boom",)
 
 
-def test_summarize_single_item() -> None:
-    assert summarize([item("X", severity=Severity.CRITICAL)]) == ("New: Drupal (critical)", "X")
+def test_compose_single_drupal_advisory() -> None:
+    advisory = item("ABC - Critical - Cross-site scripting - SA-CONTRIB-2026-224", severity=Severity.CRITICAL)
+    notification = compose([advisory])
+    assert (notification.title, notification.subtitle, notification.body) == (
+        "New critical Drupal advisory",
+        "ABC · SA-CONTRIB-2026-224",
+        "Cross-site scripting",
+    )
+    assert notification.thread == "drupal"
     with pytest.raises(ValueError, match="Nothing"):
-        summarize([])
+        compose([])
+
+
+def test_compose_nextjs_and_announcement() -> None:
+    nextjs = Item(
+        Product.NEXTJS, Kind.ADVISORY, "Next.js: Denial of Service in App Router (CVE-2026-94482)",
+        date(2026, 10, 22), url="https://github.com/advisories/x", severity=Severity.HIGH,
+    )  # fmt: skip
+    n = compose([nextjs])
+    assert (n.title, n.subtitle, n.body, n.url) == (
+        "New high Next.js advisory", "CVE-2026-94482", "Denial of Service in App Router", "https://github.com/advisories/x",
+    )  # fmt: skip
+    release = Item(Product.NODE, Kind.UPCOMING, "Tuesday, November 10, 2026 Security Releases", date(2026, 11, 10))
+    assert compose([release]).title == "Node.js security release announced for Tue 10 Nov"

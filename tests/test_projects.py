@@ -19,7 +19,7 @@ from patch_monitor.drupal_config import (
 from patch_monitor.impact import ImpactAnalyzer
 from patch_monitor.models import Item, Kind, Product, Report, Severity
 from patch_monitor.monitor import report_with_impacts
-from patch_monitor.notifications import summarize
+from patch_monitor.notifications import compose
 from patch_monitor.project_files import GitSync, WorkingTreeFiles
 from patch_monitor.project_reader import ProjectReader
 from patch_monitor.projects import JsonProjectStore, Project, ProjectError, ProjectService, validate_branch
@@ -372,12 +372,15 @@ def test_notifications_only_treat_active_impacts_as_urgent(
     dormant = advisory("drupal/webform", "<2.0.0", "Webform - Moderately critical - XSS - SA-CONTRIB-2026-226")
     impacts = ImpactAnalyzer(service.projects, reader).assess([hit, dormant])
     assert set(impacts) == {hit.key, dormant.key}
-    assert summarize([dormant, hit], impacts) == (
-        "⚠ New advisory affects Portal",
-        "Custom Formatters - Critical - RCE - SA-CONTRIB-2026-225 → Portal; +1 other new item",
+    notification = compose([dormant, hit], impacts)
+    assert (notification.title, notification.subtitle, notification.body) == (
+        "⚠ Critical Drupal advisory affects Portal",
+        "Custom Formatters · SA-CONTRIB-2026-225",
+        "RCE\nPortal: 4.1.0 → update to 4.2.1 (enabled)\n+1 other new item",
     )
+    assert notification.thread == "affected"
     only_dormant = {dormant.key: impacts[dormant.key]}
-    assert summarize([dormant], only_dormant)[0] == "New: Drupal (critical)"
+    assert compose([dormant], only_dormant).title == "New critical Drupal advisory"
 
 
 def test_project_model_round_trip(tmp_path: Path) -> None:
