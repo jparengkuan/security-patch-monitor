@@ -65,6 +65,11 @@ class LockedPackages:
         return {"ecosystem": self.ecosystem.value, "next": self.versions.get(NEXT), "packages": len(self.versions)}
 
 
+def package_ecosystem(package: str) -> Ecosystem:
+    """Composer names are ``vendor/name``; npm names are ``name`` or ``@scope/name``."""
+    return Ecosystem.COMPOSER if "/" in package and not package.startswith("@") else Ecosystem.NPM
+
+
 class LockFormat(Protocol):
     filename: str
     ecosystem: Ecosystem

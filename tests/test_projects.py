@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,8 @@ from patch_monitor.drupal_config import (
     parse_core_extension,
 )
 from patch_monitor.impact import ImpactAnalyzer
-from patch_monitor.models import Item, Kind, Product, Severity
+from patch_monitor.models import Item, Kind, Product, Report, Severity
+from patch_monitor.monitor import report_with_impacts
 from patch_monitor.notifications import summarize
 from patch_monitor.project_files import GitSync, WorkingTreeFiles
 from patch_monitor.project_reader import ProjectReader
@@ -518,3 +519,22 @@ def test_directory_with_several_lock_files_must_be_specific(service: ProjectServ
     with pytest.raises(ProjectError, match="choose the lock file"):
         service.add_project("Mixed", str(tmp_path / "mixed"))
     assert service.add_project("Mixed", str(tmp_path / "mixed" / "package-lock.json"))["ecosystem"] == "npm"
+
+
+def test_not_affected_only_for_projects_of_the_same_type(
+    service: ProjectService, reader: ProjectReader, tmp_path: Path
+) -> None:
+    drupal = advisory("drupal/advanced_filesystem", "<1.0.28")
+    nextjs = nextjs_advisory(">= 16.0.0, <= 16.4.0", ("16.4.1",))
+    report = Report(datetime(2026, 10, 23, tzinfo=UTC), (drupal, nextjs))
+    analyzer = ImpactAnalyzer(service.projects, reader)
+
+    def checked() -> dict[str, bool]:
+        data = report_with_impacts(report, analyzer)
+        return {item["package"]: item["checked"] for item in data["items"]}
+
+    service.add_project("Frontend", str(write_npm_project(tmp_path / "web", "16.4.1")))
+    assert checked() == {"drupal/advanced_filesystem": False, "next": True}
+    service.add_project("Site", str(write_site(tmp_path / "site", {"drupal/core": "11.4.11"})))
+    assert checked() == {"drupal/advanced_filesystem": True, "next": True}
+    assert report_with_impacts(report, None)["items"][0]["checked"] is False

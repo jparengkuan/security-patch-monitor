@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from patch_monitor.drupal_config import EnabledState, EnabledStatus
-from patch_monitor.lockfiles import DRUPAL_CORE, DRUPAL_VENDOR, Ecosystem
+from patch_monitor.lockfiles import DRUPAL_CORE, DRUPAL_VENDOR, Ecosystem, package_ecosystem
 from patch_monitor.models import Item
 from patch_monitor.project_reader import ProjectReader, ProjectState
 from patch_monitor.projects import Project, ProjectError
@@ -52,6 +52,10 @@ class Impact:
 class ImpactAssessor(Protocol):
     def has_projects(self) -> bool: ...
 
+    def checks(self, package: str) -> bool:
+        """Whether at least one project can contain ``package`` (a project of the same ecosystem)."""
+        ...
+
     def refresh(self) -> None:
         """Bring project sources up to date (e.g. git fetch); called before every check."""
         ...
@@ -68,6 +72,10 @@ class ImpactAnalyzer:
 
     def has_projects(self) -> bool:
         return bool(self._projects())
+
+    def checks(self, package: str) -> bool:
+        wanted = package_ecosystem(package)
+        return any(project.ecosystem is wanted for project in self._projects())
 
     def refresh(self) -> None:
         self._reader.sync(self._projects())

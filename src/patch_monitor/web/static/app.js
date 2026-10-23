@@ -152,7 +152,7 @@
         : `Installed in ${plural(impacts.length, "project")}, but not enabled`;
       return `<div class="impact${active ? "" : " dormant"}"><b>${heading}</b><ul>${rows}</ul></div>`;
     }
-    if (state.projectsConfigured && item.package) {
+    if (item.checked) {
       return '<div class="impact clear"><b>✓</b> Not affected in your projects</div>';
     }
     return "";

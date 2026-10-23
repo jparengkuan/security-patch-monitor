@@ -222,6 +222,9 @@ def report_with_impacts(
     data = report.to_dict(new_keys)
     for item in data["items"]:
         item["impacts"] = [impact.to_dict() for impact in impacts.get(item["key"], [])]
+        # "Not affected" is only meaningful when a project of the matching type was checked:
+        # a Drupal advisory says nothing about a Next.js-only setup, and vice versa.
+        item["checked"] = bool(assessor and item["package"] and assessor.checks(item["package"]))
     data["projects_configured"] = assessor.has_projects() if assessor else False
     return data
 

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from patch_monitor.lockfiles import Ecosystem, LockError, lock_format, parse_lock_file
+from patch_monitor.lockfiles import Ecosystem, LockError, lock_format, package_ecosystem, parse_lock_file
 
 
 def test_composer_lock_includes_dev_packages() -> None:
@@ -90,3 +90,11 @@ def test_invalid_lock_files(name: str, text: str, message: str) -> None:
 
 def test_lock_format_lookup() -> None:
     assert lock_format("yarn.lock").ecosystem is Ecosystem.NPM
+
+
+@pytest.mark.parametrize(
+    ("package", "ecosystem"),
+    [("drupal/webform", Ecosystem.COMPOSER), ("next", Ecosystem.NPM), ("@next/env", Ecosystem.NPM)],
+)
+def test_package_ecosystem(package: str, ecosystem: Ecosystem) -> None:
+    assert package_ecosystem(package) is ecosystem
