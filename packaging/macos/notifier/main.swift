@@ -89,7 +89,8 @@ func post(_ payload: Payload, center: UNUserNotificationCenter) {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.prohibited)  // no Dock icon, no menu bar
+// .accessory, not .prohibited: macOS silently denies the permission prompt to apps that can never show UI.
+app.setActivationPolicy(.accessory)  // no Dock icon (LSUIElement), no menu bar
 
 let handler = NotificationHandler()
 let center = UNUserNotificationCenter.current()
